@@ -3,6 +3,7 @@ import { Decimal } from "decimal.js";
 import type { Pool } from "pg";
 import { z } from "zod";
 import { AppError } from "../errors/AppError.js";
+import { currentIndiaDate } from "../lib/marketHours.js";
 import { createAuthenticate } from "../middleware/authenticate.js";
 import { asyncHandler } from "../middleware/asyncHandler.js";
 import type { MarketDataService } from "../services/marketDataService.js";
@@ -17,15 +18,9 @@ const transactionSchema = z.object({
   exchange: z.enum(["NSE", "BSE"]),
   type: z.enum(["BUY", "SELL"]),
   quantity: positiveDecimal,
-  price: positiveDecimal,
   txnDate: z.iso.date(),
 }).strict().superRefine((value, context) => {
-  const today = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Kolkata",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
+  const today = currentIndiaDate();
   if (value.txnDate > today) {
     context.addIssue({ code: "custom", path: ["txnDate"], message: "Transaction date cannot be in the future" });
   }

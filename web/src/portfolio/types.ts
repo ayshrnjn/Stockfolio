@@ -21,6 +21,8 @@ export interface PortfolioHolding {
   quantity: string;
   avgBuyPrice: string;
   investment: string;
+  latestBuyDate: string | null;
+  latestSellDate: string | null;
   ltp: string | null;
   previousClose: string | null;
   currentValue: string | null;
@@ -28,7 +30,6 @@ export interface PortfolioHolding {
   overallPnlPct: string | null;
   dayPnl: string | null;
   dayPnlPct: string | null;
-  weightPct: string;
   quoteStatus: "live" | "stale" | "unavailable";
   asOf: string | null;
 }

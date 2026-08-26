@@ -11,7 +11,6 @@ export interface CreateTransactionInput {
   exchange: IndianExchange;
   type: "BUY" | "SELL";
   quantity: string;
-  price: string;
   txnDate: string;
 }
 
@@ -106,7 +105,12 @@ export class PortfolioTransactionService {
         return { transaction: previous.response_body, replayed: true };
       }
     }
-    const stock = (await this.marketData.getStockDetail(input.exchange, input.symbol)).value;
+    const [stockResult, priceResult] = await Promise.all([
+      this.marketData.getStockDetail(input.exchange, input.symbol),
+      this.marketData.getStockPriceOnDate(input.exchange, input.symbol, input.txnDate),
+    ]);
+    const stock = stockResult.value;
+    const transactionPrice = priceResult.value.close;
 
     return withTransaction(this.database, async (client) => {
       const portfolioId = await this.lockPortfolio(client, userId);
@@ -131,7 +135,13 @@ export class PortfolioTransactionService {
 
       const instrumentId = await this.upsertInstrument(client, stock);
       if (input.type === "SELL") {
-        await this.assertSufficientQuantity(client, portfolioId, instrumentId, input.quantity);
+        await this.assertChronologicalSell(
+          client,
+          portfolioId,
+          instrumentId,
+          input.quantity,
+          input.txnDate,
+        );
       }
 
       const inserted = await client.query<TransactionRow>(
@@ -148,7 +158,7 @@ export class PortfolioTransactionService {
           instrumentId,
           input.type,
           input.quantity,
-          input.price,
+          transactionPrice,
           input.txnDate,
           idempotencyKey,
           requestHash,
@@ -197,24 +207,53 @@ export class PortfolioTransactionService {
     return instrument.id;
   }
 
-  private async assertSufficientQuantity(
+  private async assertChronologicalSell(
     client: PoolClient,
     portfolioId: string,
     instrumentId: string,
     requestedQuantity: string,
+    transactionDate: string,
   ): Promise<void> {
-    const result = await client.query<{ net_quantity: string }>(
-      `SELECT COALESCE(SUM(CASE WHEN type = 'BUY' THEN quantity ELSE -quantity END), 0)::text AS net_quantity
+    const result = await client.query<{ type: "BUY" | "SELL"; quantity: string; txn_date: string }>(
+      `SELECT type, quantity::text, to_char(txn_date, 'YYYY-MM-DD') AS txn_date
          FROM transactions
         WHERE portfolio_id = $1 AND instrument_id = $2`,
       [portfolioId, instrumentId],
     );
-    const available = new Decimal(result.rows[0]?.net_quantity ?? "0");
-    if (available.lessThan(requestedQuantity)) {
+    const dailyChanges = new Map<string, Decimal>();
+    for (const row of result.rows) {
+      const signedQuantity = row.type === "BUY" ? new Decimal(row.quantity) : new Decimal(row.quantity).negated();
+      dailyChanges.set(row.txn_date, (dailyChanges.get(row.txn_date) ?? new Decimal(0)).plus(signedQuantity));
+    }
+
+    let runningQuantity = new Decimal(0);
+    let availableOnDate = new Decimal(0);
+    let minimumFromSaleDate: Decimal | null = null;
+    for (const [date, dailyChange] of [...dailyChanges.entries()].sort(([left], [right]) => left.localeCompare(right))) {
+      runningQuantity = runningQuantity.plus(dailyChange);
+      if (date <= transactionDate) availableOnDate = runningQuantity;
+      if (date >= transactionDate) {
+        minimumFromSaleDate = minimumFromSaleDate === null
+          ? runningQuantity
+          : Decimal.min(minimumFromSaleDate, runningQuantity);
+      }
+    }
+    minimumFromSaleDate ??= availableOnDate;
+    const sellableQuantity = Decimal.min(availableOnDate, minimumFromSaleDate);
+    if (sellableQuantity.lessThan(requestedQuantity)) {
+      const available = Decimal.max(sellableQuantity, 0);
       throw new AppError(
         "INSUFFICIENT_QUANTITY",
-        `Only ${available.toFixed(4)} shares are available to sell`,
-        { status: 400, details: { availableQuantity: available.toFixed(4) } },
+        available.isZero()
+          ? "This stock cannot be sold before it was purchased"
+          : `Only ${available.toFixed(4)} shares can be sold on ${transactionDate}`,
+        {
+          status: 400,
+          details: {
+            availableQuantity: available.toFixed(4),
+            txnDate: ["Choose a date on or after a purchase with sufficient available quantity"],
+          },
+        },
       );
     }
   }

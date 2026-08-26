@@ -15,7 +15,6 @@ const input: CreateTransactionInput = {
   exchange: "NSE",
   type: "BUY",
   quantity: "10.0000",
-  price: "100.0000",
   txnDate: "2026-08-26",
 };
 
@@ -52,7 +51,7 @@ function stockDetail(): StockDetail {
 }
 
 interface FakeDatabaseOptions {
-  availableQuantity?: string;
+  ledgerRows?: Array<{ type: "BUY" | "SELL"; quantity: string; txn_date: string }>;
 }
 
 function createFakeDatabase(options: FakeDatabaseOptions = {}) {
@@ -67,8 +66,9 @@ function createFakeDatabase(options: FakeDatabaseOptions = {}) {
         return { rows: stored ? [stored] : [], rowCount: stored ? 1 : 0 };
       }
       if (normalized.startsWith("INSERT INTO instruments")) return { rows: [{ id: "4" }], rowCount: 1 };
-      if (normalized.includes("AS net_quantity")) {
-        return { rows: [{ net_quantity: options.availableQuantity ?? "0" }], rowCount: 1 };
+      if (normalized.startsWith("SELECT type, quantity::text")) {
+        const rows = options.ledgerRows ?? [];
+        return { rows, rowCount: rows.length };
       }
       if (normalized.startsWith("INSERT INTO transactions")) {
         transactionInsertCount += 1;
@@ -111,8 +111,13 @@ function createService(database: Pool) {
     stale: false,
     asOf: "2026-08-26T10:00:00.000Z",
   });
-  const marketData = { getStockDetail } as unknown as MarketDataService;
-  return { service: new PortfolioTransactionService(database, marketData), getStockDetail };
+  const getStockPriceOnDate = vi.fn().mockResolvedValue({
+    value: { symbol: "RELIANCE", exchange: "NSE", date: input.txnDate, close: "100.0000" },
+    stale: false,
+    asOf: "2026-08-26T10:00:00.000Z",
+  });
+  const marketData = { getStockDetail, getStockPriceOnDate } as unknown as MarketDataService;
+  return { service: new PortfolioTransactionService(database, marketData), getStockDetail, getStockPriceOnDate };
 }
 
 describe("PortfolioTransactionService", () => {
@@ -124,6 +129,7 @@ describe("PortfolioTransactionService", () => {
     const second = await service.create("1", input, idempotencyKey);
 
     expect(first.replayed).toBe(false);
+    expect(first.transaction.price).toBe("100.0000");
     expect(second).toEqual({ transaction: first.transaction, replayed: true });
     expect(fake.getTransactionInsertCount()).toBe(1);
     expect(getStockDetail).toHaveBeenCalledTimes(1);
@@ -144,7 +150,9 @@ describe("PortfolioTransactionService", () => {
   });
 
   it("rejects a SELL that exceeds the available quantity", async () => {
-    const fake = createFakeDatabase({ availableQuantity: "3.0000" });
+    const fake = createFakeDatabase({
+      ledgerRows: [{ type: "BUY", quantity: "3.0000", txn_date: "2026-08-20" }],
+    });
     const { service } = createService(fake.database);
 
     const failure = await service.create("1", {
@@ -157,5 +165,41 @@ describe("PortfolioTransactionService", () => {
     expect(failure).toMatchObject({ code: "INSUFFICIENT_QUANTITY", status: 400 });
     expect(fake.getTransactionInsertCount()).toBe(0);
     expect(fake.client.release).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a SELL dated before the first BUY", async () => {
+    const fake = createFakeDatabase({
+      ledgerRows: [{ type: "BUY", quantity: "10.0000", txn_date: "2026-08-27" }],
+    });
+    const { service } = createService(fake.database);
+
+    const failure = await service.create("1", {
+      ...input,
+      type: "SELL",
+      quantity: "1.0000",
+    }, idempotencyKey).then(() => undefined, (error: unknown) => error);
+
+    expect(failure).toMatchObject({ code: "INSUFFICIENT_QUANTITY", status: 400 });
+    expect(fake.getTransactionInsertCount()).toBe(0);
+  });
+
+  it("rejects a backdated SELL that would make a later balance negative", async () => {
+    const fake = createFakeDatabase({
+      ledgerRows: [
+        { type: "BUY", quantity: "10.0000", txn_date: "2026-08-20" },
+        { type: "SELL", quantity: "10.0000", txn_date: "2026-08-26" },
+      ],
+    });
+    const { service } = createService(fake.database);
+
+    const failure = await service.create("1", {
+      ...input,
+      type: "SELL",
+      quantity: "1.0000",
+      txnDate: "2026-08-25",
+    }, idempotencyKey).then(() => undefined, (error: unknown) => error);
+
+    expect(failure).toMatchObject({ code: "INSUFFICIENT_QUANTITY", status: 400 });
+    expect(fake.getTransactionInsertCount()).toBe(0);
   });
 });

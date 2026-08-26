@@ -26,6 +26,8 @@ interface BaseHolding {
   quantity: string;
   avgBuyPrice: string;
   investment: string;
+  latestBuyDate: string | null;
+  latestSellDate: string | null;
 }
 
 export interface PortfolioHolding extends BaseHolding {
@@ -36,7 +38,6 @@ export interface PortfolioHolding extends BaseHolding {
   overallPnlPct: string | null;
   dayPnl: string | null;
   dayPnlPct: string | null;
-  weightPct: string;
   quoteStatus: "live" | "stale" | "unavailable";
   asOf: string | null;
 }
@@ -75,12 +76,16 @@ function deriveBaseHoldings(rows: LedgerRow[]): BaseHolding[] {
     let buyQuantity = d(0);
     let buyCost = d(0);
     let sellQuantity = d(0);
+    let latestBuyDate: string | null = null;
+    let latestSellDate: string | null = null;
     for (const transaction of group) {
       if (transaction.type === "BUY") {
         buyQuantity = buyQuantity.plus(transaction.quantity);
         buyCost = buyCost.plus(mul(transaction.quantity, transaction.price));
+        if (!latestBuyDate || transaction.txn_date > latestBuyDate) latestBuyDate = transaction.txn_date;
       } else {
         sellQuantity = sellQuantity.plus(transaction.quantity);
+        if (!latestSellDate || transaction.txn_date > latestSellDate) latestSellDate = transaction.txn_date;
       }
     }
     const quantity = buyQuantity.minus(sellQuantity);
@@ -95,6 +100,8 @@ function deriveBaseHoldings(rows: LedgerRow[]): BaseHolding[] {
       quantity: str(quantity),
       avgBuyPrice: str(avgBuyPrice),
       investment: str(mul(quantity, avgBuyPrice)),
+      latestBuyDate,
+      latestSellDate,
     });
   }
   return holdings.sort((left, right) => left.companyName.localeCompare(right.companyName));
@@ -126,7 +133,6 @@ export class PortfolioDashboardService {
           overallPnlPct: null,
           dayPnl: null,
           dayPnlPct: null,
-          weightPct: str(0),
           quoteStatus: "unavailable",
           asOf: null,
         };
@@ -149,7 +155,6 @@ export class PortfolioDashboardService {
         overallPnlPct: str(pct(overallPnl, holding.investment)),
         dayPnl: dayPnl ? str(dayPnl) : null,
         dayPnlPct: previousClose ? str(pct(sub(ltp, previousClose), previousClose)) : null,
-        weightPct: str(0),
         quoteStatus: settled.value.stale ? "stale" : "live",
         asOf: settled.value.asOf,
       };
@@ -160,12 +165,6 @@ export class PortfolioDashboardService {
       (total, holding) => total.plus(holding.currentValue!),
       d(0),
     );
-    for (const holding of holdings) {
-      holding.weightPct = holding.currentValue
-        ? str(pct(holding.currentValue, portfolioCurrentValue))
-        : str(0);
-    }
-
     const comparableInvestment = availableHoldings.reduce(
       (total, holding) => total.plus(holding.investment),
       d(0),

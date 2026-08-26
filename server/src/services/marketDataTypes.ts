@@ -61,11 +61,20 @@ export interface MarketIndex {
 
 export interface ActiveCompany {
   ticker: string;
+  symbol: string | null;
+  exchange: "NSE" | null;
   companyName: string;
   price: string | null;
   change: string | null;
   changePct: string | null;
   volume: string | null;
+}
+
+export interface StockPriceOnDate {
+  symbol: string;
+  exchange: IndianExchange;
+  date: string;
+  close: string;
 }
 
 export interface MarketOverview {

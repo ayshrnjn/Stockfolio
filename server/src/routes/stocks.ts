@@ -2,6 +2,7 @@ import { Router } from "express";
 import { rateLimit } from "express-rate-limit";
 import { z } from "zod";
 import { AppError } from "../errors/AppError.js";
+import { currentIndiaDate } from "../lib/marketHours.js";
 import { asyncHandler } from "../middleware/asyncHandler.js";
 import type { MarketDataService } from "../services/marketDataService.js";
 
@@ -15,6 +16,10 @@ const instrumentSchema = z.object({
 });
 const historyQuerySchema = z.object({
   range: z.enum(["1D", "1W", "1M", "3M", "1Y"]).default("1M"),
+});
+const priceDateQuerySchema = z.object({ date: z.iso.date() }).superRefine((value, context) => {
+  const today = currentIndiaDate();
+  if (value.date > today) context.addIssue({ code: "custom", path: ["date"], message: "Date cannot be in the future" });
 });
 
 export function createStocksRouter(marketData: MarketDataService): Router {
@@ -56,6 +61,14 @@ export function createStocksRouter(marketData: MarketDataService): Router {
     const result = await marketData.getStockHistory(exchange, symbol, range);
     response.setHeader("cache-control", "private, no-store");
     response.json({ data: { history: result.value, stale: result.stale, asOf: result.asOf } });
+  }));
+
+  router.get("/:exchange/:symbol/price-on", asyncHandler(async (request, response) => {
+    const { exchange, symbol } = instrumentSchema.parse(request.params);
+    const { date } = priceDateQuerySchema.parse(request.query);
+    const result = await marketData.getStockPriceOnDate(exchange, symbol, date);
+    response.setHeader("cache-control", "private, no-store");
+    response.json({ data: { price: result.value, stale: result.stale, asOf: result.asOf } });
   }));
 
   router.get("/:exchange/:symbol", asyncHandler(async (request, response) => {

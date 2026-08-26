@@ -33,7 +33,6 @@ const validBody = {
   exchange: "NSE",
   type: "BUY",
   quantity: "10.0000",
-  price: "100.0000",
   txnDate: "2026-08-26",
 };
 

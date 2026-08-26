@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { request } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { formatCompactNumber, formatCurrency, formatNumber, formatPercent, formatQuoteTime } from "../lib/format";
@@ -16,6 +16,8 @@ interface MarketIndex {
 
 interface ActiveCompany {
   ticker: string;
+  symbol: string | null;
+  exchange: "NSE" | null;
   companyName: string;
   price: string | null;
   change: string | null;
@@ -113,9 +115,16 @@ function IndexCard({ index }: { index: MarketIndex }): JSX.Element {
 }
 
 function CompanyRow({ company }: { company: ActiveCompany }): JSX.Element {
+  const navigate = useNavigate();
   const change = Number(company.change ?? 0);
   const color = change < 0 ? "text-loss" : change > 0 ? "text-profit" : "text-slate-600";
-  return <tr className="transition hover:bg-slate-50/80"><td className="px-6 py-4"><p className="font-semibold text-ink">{company.companyName}</p><p className="mt-1 text-xs text-slate-500">NSE · Most active</p></td><td className="px-4 py-4 text-right font-semibold tabular-nums text-ink">{formatCurrency(company.price)}</td><td className={`px-4 py-4 text-right font-semibold tabular-nums ${color}`}>{formatNumber(company.change)} <span className="ml-1 text-xs">({formatPercent(company.changePct, true)})</span></td><td className="px-6 py-4 text-right text-sm font-medium tabular-nums text-slate-600">{formatCompactNumber(company.volume)}</td></tr>;
+  const destination = company.symbol && company.exchange
+    ? `/stock/${company.exchange}/${encodeURIComponent(company.symbol)}`
+    : null;
+  const openCompany = (): void => {
+    if (destination) navigate(destination);
+  };
+  return <tr tabIndex={destination ? 0 : undefined} onClick={openCompany} onKeyDown={(event) => { if (destination && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); openCompany(); } }} className={`transition hover:bg-slate-50/80 ${destination ? "cursor-pointer focus:bg-slate-50" : ""}`}><td className="px-6 py-4"><p className={`font-semibold ${destination ? "text-brand-700" : "text-ink"}`}>{company.companyName}</p><p className="mt-1 text-xs text-slate-500">{company.symbol ?? company.ticker} · NSE{destination ? " · View company" : ""}</p></td><td className="px-4 py-4 text-right font-semibold tabular-nums text-ink">{formatCurrency(company.price)}</td><td className={`px-4 py-4 text-right font-semibold tabular-nums ${color}`}>{formatNumber(company.change)} <span className="ml-1 text-xs">({formatPercent(company.changePct, true)})</span></td><td className="px-6 py-4 text-right text-sm font-medium tabular-nums text-slate-600">{formatCompactNumber(company.volume)}</td></tr>;
 }
 
 function MarketSkeleton(): JSX.Element {

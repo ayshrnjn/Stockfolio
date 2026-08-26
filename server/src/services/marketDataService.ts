@@ -1,14 +1,15 @@
 import { Decimal } from "decimal.js";
+import pLimit from "p-limit";
 import type { MarketDataConfig } from "../config/marketDataConfig.js";
 import { AppError } from "../errors/AppError.js";
 import { InMemoryCache, type CacheResult, type CacheStats, type CacheStore } from "../lib/cache.js";
 import { RetryingJsonHttpClient, UpstreamRequestError } from "../lib/http/jsonHttpClient.js";
-import { defaultMarketDataTtl } from "../lib/marketHours.js";
+import { currentIndiaDate, defaultMarketDataTtl } from "../lib/marketHours.js";
 import { IndianApiClient, type ProviderHistoryPeriod } from "../providers/indianApi/client.js";
 import { ProviderContractError, ProviderNotFoundError, type ProviderHistory, type ProviderStockDetail } from "../providers/indianApi/schemas.js";
 import type { StockSearchResult } from "../providers/indianApi/types.js";
 import { YahooFinanceClient, type YahooIndexSymbol } from "../providers/yahooFinance/client.js";
-import type { ChartRange, IndianExchange, MarketIndex, MarketOverview, PricePoint, StockDetail, StockHistory } from "./marketDataTypes.js";
+import type { ChartRange, IndianExchange, MarketIndex, MarketOverview, PricePoint, StockDetail, StockHistory, StockPriceOnDate } from "./marketDataTypes.js";
 
 const SEARCH_TTL_MS = 5 * 60 * 1_000;
 const HISTORY_TTL_MS = 15 * 60 * 1_000;
@@ -117,7 +118,7 @@ export class MarketDataService {
 
   public async getMarketOverview(): Promise<CacheResult<MarketOverview>> {
     return this.withProviderErrors(() => this.cache.getOrFetch(
-      "market-overview:v1",
+      "market-overview:v2",
       async () => {
         const [activeResult, ...indexResults] = await Promise.allSettled([
           this.client.getNseMostActive(),
@@ -139,16 +140,30 @@ export class MarketDataService {
             status: value ? "live" : "unavailable",
           };
         });
-        const activeCompanies = activeResult.status === "fulfilled"
-          ? activeResult.value.slice(0, 10).map((row) => ({
-              ticker: row.ticker.replace(/\.(?:NS|BO)$/i, ""),
-              companyName: row.company,
-              price: numericText(row.price),
-              change: numericText(row.net_change),
-              changePct: numericText(row.percent_change),
-              volume: numericText(row.volume),
-            }))
-          : [];
+        const activeRows = activeResult.status === "fulfilled" ? activeResult.value.slice(0, 10) : [];
+        const searchLimit = pLimit(4);
+        const resolvedInstruments = await Promise.allSettled(activeRows.map((row) => searchLimit(async () => {
+          const search = await this.searchStocks(row.company);
+          const normalizedCompany = row.company.trim().toLocaleLowerCase("en-IN");
+          return search.value.find((candidate) => (
+            candidate.exchange === "NSE"
+            && candidate.companyName.trim().toLocaleLowerCase("en-IN") === normalizedCompany
+          )) ?? null;
+        })));
+        const activeCompanies = activeRows.map((row, index) => {
+          const resolved = resolvedInstruments[index];
+          const instrument = resolved?.status === "fulfilled" ? resolved.value : null;
+          return {
+            ticker: row.ticker.replace(/\.(?:NS|BO)$/i, ""),
+            symbol: instrument?.symbol ?? null,
+            exchange: instrument ? "NSE" as const : null,
+            companyName: row.company,
+            price: numericText(row.price),
+            change: numericText(row.net_change),
+            changePct: numericText(row.percent_change),
+            volume: numericText(row.volume),
+          };
+        });
         if (indices.every((index) => index.status === "unavailable") && activeCompanies.length === 0) {
           throw AppError.upstreamUnavailable("Market overview is temporarily unavailable");
         }
@@ -202,6 +217,35 @@ export class MarketDataService {
         if (configuration.take) points = points.slice(-configuration.take);
 
         return { symbol: normalizedSymbol, exchange, range, granularity: "daily", points };
+      },
+      HISTORY_TTL_MS,
+    ));
+  }
+
+  public async getStockPriceOnDate(
+    exchange: IndianExchange,
+    symbol: string,
+    date: string,
+  ): Promise<CacheResult<StockPriceOnDate>> {
+    const normalizedSymbol = symbol.toUpperCase();
+    return this.withProviderErrors(() => this.cache.getOrFetch(
+      `price-on-date:${exchange}:${normalizedSymbol}:${date}`,
+      async () => {
+        await this.resolveInstrument(exchange, normalizedSymbol);
+        const today = currentIndiaDate();
+        if (date === today) {
+          const detail = await this.getStockDetail(exchange, normalizedSymbol);
+          if (!detail.value.quote.ltp) throw AppError.upstreamUnavailable("Current market price is unavailable");
+          return { symbol: normalizedSymbol, exchange, date, close: detail.value.quote.ltp };
+        }
+        const ageInDays = Math.floor((Date.now() - Date.parse(`${date}T00:00:00Z`)) / 86_400_000);
+        const period: ProviderHistoryPeriod = ageInDays <= 370 ? "1yr" : "max";
+        const history = await this.getHistorySource(normalizedSymbol, period);
+        const point = history.value.find((candidate) => candidate.date.slice(0, 10) === date);
+        if (!point) {
+          throw AppError.notFound("No closing price is available for this date. Select a trading day.");
+        }
+        return { symbol: normalizedSymbol, exchange, date, close: point.close };
       },
       HISTORY_TTL_MS,
     ));

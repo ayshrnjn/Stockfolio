@@ -16,10 +16,10 @@ export function HoldingsTable({ holdings, onTrade }: HoldingsTableProps): JSX.El
         <span className="rounded-full bg-brand-50 px-3 py-1 text-xs font-bold text-brand-700">{holdings.length} stocks</span>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1180px] text-left">
+        <table className="w-full min-w-[1320px] text-left">
           <thead className="bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
             <tr>
-              <th className="px-6 py-3">Company</th><th className="px-4 py-3 text-right">Qty</th><th className="px-4 py-3 text-right">Avg. buy price</th><th className="px-4 py-3 text-right">LTP</th><th className="px-4 py-3 text-right">Investment</th><th className="px-4 py-3 text-right">Current value</th><th className="px-4 py-3 text-right">Overall G/L</th><th className="px-4 py-3 text-right">Day's G/L</th><th className="px-6 py-3 text-right">Weight</th>
+              <th className="px-6 py-3">Company</th><th className="px-4 py-3 text-right">Qty</th><th className="px-4 py-3 text-right">Avg. buy price</th><th className="px-4 py-3 text-right">LTP</th><th className="px-4 py-3 text-right">Investment</th><th className="px-4 py-3 text-right">Current value</th><th className="px-4 py-3 text-right">Overall G/L</th><th className="px-4 py-3 text-right">Day's G/L</th><th className="px-4 py-3 text-right">Latest buy</th><th className="px-6 py-3 text-right">Latest sell</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -40,7 +40,8 @@ export function HoldingsTable({ holdings, onTrade }: HoldingsTableProps): JSX.El
                 <MoneyCell value={formatCurrency(holding.currentValue)} />
                 <PnlCell money={holding.overallPnl} percent={holding.overallPnlPct} />
                 <PnlCell money={holding.dayPnl} percent={holding.dayPnlPct} />
-                <MoneyCell value={formatPercent(holding.weightPct)} className="px-6" />
+                <DateCell value={holding.latestBuyDate} />
+                <DateCell value={holding.latestSellDate} className="px-6" />
               </tr>
             ))}
           </tbody>
@@ -56,6 +57,13 @@ function TradeButton({ label, className, onClick }: { label: string; className: 
 
 function MoneyCell({ value, className = "px-4" }: { value: string; className?: string }): JSX.Element {
   return <td className={`${className} py-4 text-right text-sm font-medium tabular-nums text-ink`}>{value}</td>;
+}
+
+function DateCell({ value, className = "px-4" }: { value: string | null; className?: string }): JSX.Element {
+  const formatted = value
+    ? new Intl.DateTimeFormat("en-IN", { dateStyle: "medium" }).format(new Date(`${value}T00:00:00Z`))
+    : "—";
+  return <td className={`${className} py-4 text-right text-xs font-medium tabular-nums text-slate-600`}>{formatted}</td>;
 }
 
 function PnlCell({ money, percent }: { money: string | null; percent: string | null }): JSX.Element {

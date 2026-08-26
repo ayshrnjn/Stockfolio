@@ -10,6 +10,16 @@ const istFormatter = new Intl.DateTimeFormat("en-GB", {
   minute: "2-digit",
   hourCycle: "h23",
 });
+const istDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Kolkata",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+export function currentIndiaDate(now = new Date()): string {
+  return istDateFormatter.format(now);
+}
 
 export function isMarketOpen(now = new Date()): boolean {
   const parts = Object.fromEntries(
