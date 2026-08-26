@@ -11,6 +11,7 @@ export interface CreateTransactionInput {
   exchange: IndianExchange;
   type: "BUY" | "SELL";
   quantity: string;
+  price: string;
   txnDate: string;
 }
 
@@ -105,12 +106,8 @@ export class PortfolioTransactionService {
         return { transaction: previous.response_body, replayed: true };
       }
     }
-    const [stockResult, priceResult] = await Promise.all([
-      this.marketData.getStockDetail(input.exchange, input.symbol),
-      this.marketData.getStockPriceOnDate(input.exchange, input.symbol, input.txnDate),
-    ]);
+    const stockResult = await this.marketData.getStockDetail(input.exchange, input.symbol);
     const stock = stockResult.value;
-    const transactionPrice = priceResult.value.close;
 
     return withTransaction(this.database, async (client) => {
       const portfolioId = await this.lockPortfolio(client, userId);
@@ -158,7 +155,7 @@ export class PortfolioTransactionService {
           instrumentId,
           input.type,
           input.quantity,
-          transactionPrice,
+          input.price,
           input.txnDate,
           idempotencyKey,
           requestHash,

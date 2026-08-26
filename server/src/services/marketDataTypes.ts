@@ -70,13 +70,6 @@ export interface ActiveCompany {
   volume: string | null;
 }
 
-export interface StockPriceOnDate {
-  symbol: string;
-  exchange: IndianExchange;
-  date: string;
-  close: string;
-}
-
 export interface MarketOverview {
   indices: MarketIndex[];
   activeCompanies: ActiveCompany[];

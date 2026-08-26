@@ -33,6 +33,7 @@ const validBody = {
   exchange: "NSE",
   type: "BUY",
   quantity: "10.0000",
+  price: "100.0000",
   txnDate: "2026-08-26",
 };
 
@@ -68,5 +69,17 @@ describe("portfolio transaction route contracts", () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error).toMatchObject({ code: "VALIDATION_ERROR" });
+  });
+
+  it("requires a positive manually entered execution price", async () => {
+    const token = jwt.sign({ userId: "1" }, jwtSecret, { algorithm: "HS256" });
+    const response = await request(app)
+      .post("/api/portfolio/transactions")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ ...validBody, price: "0" });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toMatchObject({ code: "VALIDATION_ERROR" });
+    expect(response.body.error.details.price).toContain("Value must be greater than zero");
   });
 });

@@ -4,12 +4,12 @@ import type { MarketDataConfig } from "../config/marketDataConfig.js";
 import { AppError } from "../errors/AppError.js";
 import { InMemoryCache, type CacheResult, type CacheStats, type CacheStore } from "../lib/cache.js";
 import { RetryingJsonHttpClient, UpstreamRequestError } from "../lib/http/jsonHttpClient.js";
-import { currentIndiaDate, defaultMarketDataTtl } from "../lib/marketHours.js";
+import { defaultMarketDataTtl } from "../lib/marketHours.js";
 import { IndianApiClient, type ProviderHistoryPeriod } from "../providers/indianApi/client.js";
 import { ProviderContractError, ProviderNotFoundError, type ProviderHistory, type ProviderStockDetail } from "../providers/indianApi/schemas.js";
 import type { StockSearchResult } from "../providers/indianApi/types.js";
 import { YahooFinanceClient, type YahooIndexSymbol } from "../providers/yahooFinance/client.js";
-import type { ChartRange, IndianExchange, MarketIndex, MarketOverview, PricePoint, StockDetail, StockHistory, StockPriceOnDate } from "./marketDataTypes.js";
+import type { ChartRange, IndianExchange, MarketIndex, MarketOverview, PricePoint, StockDetail, StockHistory } from "./marketDataTypes.js";
 
 const SEARCH_TTL_MS = 5 * 60 * 1_000;
 const HISTORY_TTL_MS = 15 * 60 * 1_000;
@@ -217,35 +217,6 @@ export class MarketDataService {
         if (configuration.take) points = points.slice(-configuration.take);
 
         return { symbol: normalizedSymbol, exchange, range, granularity: "daily", points };
-      },
-      HISTORY_TTL_MS,
-    ));
-  }
-
-  public async getStockPriceOnDate(
-    exchange: IndianExchange,
-    symbol: string,
-    date: string,
-  ): Promise<CacheResult<StockPriceOnDate>> {
-    const normalizedSymbol = symbol.toUpperCase();
-    return this.withProviderErrors(() => this.cache.getOrFetch(
-      `price-on-date:${exchange}:${normalizedSymbol}:${date}`,
-      async () => {
-        await this.resolveInstrument(exchange, normalizedSymbol);
-        const today = currentIndiaDate();
-        if (date === today) {
-          const detail = await this.getStockDetail(exchange, normalizedSymbol);
-          if (!detail.value.quote.ltp) throw AppError.upstreamUnavailable("Current market price is unavailable");
-          return { symbol: normalizedSymbol, exchange, date, close: detail.value.quote.ltp };
-        }
-        const ageInDays = Math.floor((Date.now() - Date.parse(`${date}T00:00:00Z`)) / 86_400_000);
-        const period: ProviderHistoryPeriod = ageInDays <= 370 ? "1yr" : "max";
-        const history = await this.getHistorySource(normalizedSymbol, period);
-        const point = history.value.find((candidate) => candidate.date.slice(0, 10) === date);
-        if (!point) {
-          throw AppError.notFound("No closing price is available for this date. Select a trading day.");
-        }
-        return { symbol: normalizedSymbol, exchange, date, close: point.close };
       },
       HISTORY_TTL_MS,
     ));

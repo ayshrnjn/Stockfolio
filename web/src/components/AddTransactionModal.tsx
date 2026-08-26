@@ -18,7 +18,7 @@ interface AddTransactionModalProps {
   onSuccess?(transaction: PortfolioTransaction): void | Promise<void>;
 }
 
-type FieldName = "quantity" | "txnDate";
+type FieldName = "quantity" | "price" | "txnDate";
 
 function todayInIndia(): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -32,7 +32,7 @@ function todayInIndia(): string {
 function serverFieldErrors(details: unknown): Partial<Record<FieldName, string>> {
   if (typeof details !== "object" || details === null || Array.isArray(details)) return {};
   const result: Partial<Record<FieldName, string>> = {};
-  for (const field of ["quantity", "txnDate"] as const) {
+  for (const field of ["quantity", "price", "txnDate"] as const) {
     const messages = (details as Record<string, unknown>)[field];
     if (Array.isArray(messages) && typeof messages[0] === "string") result[field] = messages[0];
   }
@@ -47,13 +47,12 @@ export function AddTransactionModal({ stock, initialType = "BUY", onClose, onSuc
   const navigate = useNavigate();
   const [type, setType] = useState<"BUY" | "SELL">(initialType);
   const [quantity, setQuantity] = useState("");
-  const [price, setPrice] = useState("");
+  const [price, setPrice] = useState(stock.quote.ltp ?? "");
   const [txnDate, setTxnDate] = useState(todayInIndia());
-  const [priceLoading, setPriceLoading] = useState(true);
-  const [priceError, setPriceError] = useState<string | null>(null);
   const [errors, setErrors] = useState<Partial<Record<FieldName, string>>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const suggestedPrice = useRef(stock.quote.ltp);
   const idempotencyKey = useRef<string | null>(null);
 
   useEffect(() => {
@@ -65,34 +64,24 @@ export function AddTransactionModal({ stock, initialType = "BUY", onClose, onSuc
   }, [onClose, submitting]);
 
   useEffect(() => {
-    if (!txnDate) {
-      setPrice("");
-      setPriceError(null);
-      setPriceLoading(false);
-      return;
-    }
-    const controller = new AbortController();
-    setPrice("");
-    setPriceError(null);
-    setPriceLoading(true);
-    request<{ price: { close: string; date: string } }>(
-      `/api/stocks/${stock.exchange}/${encodeURIComponent(stock.symbol)}/price-on?date=${encodeURIComponent(txnDate)}`,
-      { signal: controller.signal },
-    ).then((response) => {
-      setPrice(response.price.close);
-    }).catch((error: unknown) => {
-      if (error instanceof DOMException && error.name === "AbortError") return;
-      setPriceError(error instanceof Error ? error.message : "Unable to load the market price for this date");
-    }).finally(() => {
-      if (!controller.signal.aborted) setPriceLoading(false);
+    setPrice(txnDate === todayInIndia() ? suggestedPrice.current ?? "" : "");
+    setErrors((current) => {
+      const next = { ...current };
+      delete next.price;
+      return next;
     });
-    return () => controller.abort();
-  }, [stock.exchange, stock.symbol, txnDate]);
+    idempotencyKey.current = null;
+  }, [txnDate]);
 
   const changeField = (field: FieldName, value: string): void => {
     idempotencyKey.current = null;
-    setErrors((current) => ({ ...current, [field]: undefined }));
+    setErrors((current) => {
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
     if (field === "quantity") setQuantity(value);
+    if (field === "price") setPrice(value);
     if (field === "txnDate") setTxnDate(value);
   };
 
@@ -100,6 +89,7 @@ export function AddTransactionModal({ stock, initialType = "BUY", onClose, onSuc
     event.preventDefault();
     const nextErrors: Partial<Record<FieldName, string>> = {};
     if (!isPositiveDecimal(quantity)) nextErrors.quantity = "Enter a positive quantity with up to 4 decimals";
+    if (!isPositiveDecimal(price)) nextErrors.price = "Enter a positive price with up to 4 decimals";
     if (!txnDate) nextErrors.txnDate = "Select the transaction date";
     if (Object.keys(nextErrors).length > 0) {
       setErrors(nextErrors);
@@ -119,6 +109,7 @@ export function AddTransactionModal({ stock, initialType = "BUY", onClose, onSuc
           exchange: stock.exchange,
           type,
           quantity,
+          price,
           txnDate,
         }),
       });
@@ -166,13 +157,17 @@ export function AddTransactionModal({ stock, initialType = "BUY", onClose, onSuc
           <div className="mt-6 grid gap-5 sm:grid-cols-2">
             <TransactionField autoFocus label="Quantity" name="quantity" type="number" value={quantity} error={errors.quantity} onChange={(value) => changeField("quantity", value)} inputMode="decimal" />
             <TransactionField
-              label="Market price per share (₹)"
+              label="Executed price per share (₹)"
               name="price"
               type="number"
               value={price}
-              readOnly
-              hint={priceLoading ? "Loading price for the selected date…" : priceError ?? "Price is set from verified market data."}
-              onChange={() => undefined}
+              error={errors.price}
+              hint={txnDate === todayInIndia()
+                ? stock.quote.ltp
+                  ? "Today's market price is suggested. Replace it with your actual execution price if needed."
+                  : "Today's market price is unavailable. Enter your actual execution price."
+                : "Enter the actual price from your broker contract note."}
+              onChange={(value) => changeField("price", value)}
               inputMode="decimal"
             />
           </div>
@@ -182,7 +177,7 @@ export function AddTransactionModal({ stock, initialType = "BUY", onClose, onSuc
           {formError ? <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{formError}</div> : null}
           <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
             <button type="button" onClick={onClose} className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancel</button>
-            <button type="submit" disabled={submitting || priceLoading || Boolean(priceError) || !price} className="rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60">
+            <button type="submit" disabled={submitting} className="rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60">
               {submitting ? "Saving…" : `Record ${type.toLowerCase()}`}
             </button>
           </div>
@@ -202,21 +197,16 @@ interface TransactionFieldProps {
   inputMode?: "decimal";
   hint?: string;
   max?: string;
-  readOnly?: boolean;
   onChange(value: string): void;
 }
 
-function TransactionField({ autoFocus = false, label, name, type, value, error, hint, inputMode, max, readOnly = false, onChange }: TransactionFieldProps): JSX.Element {
+function TransactionField({ autoFocus = false, label, name, type, value, error, hint, inputMode, max, onChange }: TransactionFieldProps): JSX.Element {
   return (
     <div>
       <label htmlFor={name} className="mb-2 block text-sm font-medium text-slate-700">{label}</label>
-      <input autoFocus={autoFocus} id={name} name={name} type={type} value={value} inputMode={inputMode} max={max} min={type === "number" ? "0.0001" : undefined} step={type === "number" ? "0.0001" : undefined} readOnly={readOnly} onChange={(event) => onChange(event.target.value)} aria-invalid={Boolean(error)} aria-describedby={error || hint ? `${name}-message` : undefined} className={`w-full rounded-xl border px-4 py-3 text-sm text-ink shadow-sm ${readOnly ? "bg-slate-50" : "bg-white"} ${error ? "border-red-300" : "border-slate-300 focus:border-brand-500"}`} />
+      <input autoFocus={autoFocus} id={name} name={name} type={type} value={value} inputMode={inputMode} max={max} min={type === "number" ? "0.0001" : undefined} step={type === "number" ? "0.0001" : undefined} onChange={(event) => onChange(event.target.value)} aria-invalid={Boolean(error)} aria-describedby={error || hint ? `${name}-message` : undefined} className={`w-full rounded-xl border bg-white px-4 py-3 text-sm text-ink shadow-sm ${error ? "border-red-300" : "border-slate-300 focus:border-brand-500"}`} />
       {error ? <p id={`${name}-message`} className="mt-2 text-xs text-red-600">{error}</p> : null}
-      {!error && hint ? <p id={`${name}-message`} className={`mt-2 text-xs ${priceErrorClass(hint)}`}>{hint}</p> : null}
+      {!error && hint ? <p id={`${name}-message`} className="mt-2 text-xs text-slate-500">{hint}</p> : null}
     </div>
   );
-}
-
-function priceErrorClass(hint: string): string {
-  return hint.includes("unavailable") || hint.includes("No closing price") ? "text-red-600" : "text-slate-500";
 }

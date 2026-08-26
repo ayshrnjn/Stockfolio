@@ -18,6 +18,7 @@ const transactionSchema = z.object({
   exchange: z.enum(["NSE", "BSE"]),
   type: z.enum(["BUY", "SELL"]),
   quantity: positiveDecimal,
+  price: positiveDecimal,
   txnDate: z.iso.date(),
 }).strict().superRefine((value, context) => {
   const today = currentIndiaDate();

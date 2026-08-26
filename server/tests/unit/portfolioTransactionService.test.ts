@@ -15,6 +15,7 @@ const input: CreateTransactionInput = {
   exchange: "NSE",
   type: "BUY",
   quantity: "10.0000",
+  price: "123.4567",
   txnDate: "2026-08-26",
 };
 
@@ -111,13 +112,8 @@ function createService(database: Pool) {
     stale: false,
     asOf: "2026-08-26T10:00:00.000Z",
   });
-  const getStockPriceOnDate = vi.fn().mockResolvedValue({
-    value: { symbol: "RELIANCE", exchange: "NSE", date: input.txnDate, close: "100.0000" },
-    stale: false,
-    asOf: "2026-08-26T10:00:00.000Z",
-  });
-  const marketData = { getStockDetail, getStockPriceOnDate } as unknown as MarketDataService;
-  return { service: new PortfolioTransactionService(database, marketData), getStockDetail, getStockPriceOnDate };
+  const marketData = { getStockDetail } as unknown as MarketDataService;
+  return { service: new PortfolioTransactionService(database, marketData), getStockDetail };
 }
 
 describe("PortfolioTransactionService", () => {
@@ -129,7 +125,7 @@ describe("PortfolioTransactionService", () => {
     const second = await service.create("1", input, idempotencyKey);
 
     expect(first.replayed).toBe(false);
-    expect(first.transaction.price).toBe("100.0000");
+    expect(first.transaction.price).toBe("123.4567");
     expect(second).toEqual({ transaction: first.transaction, replayed: true });
     expect(fake.getTransactionInsertCount()).toBe(1);
     expect(getStockDetail).toHaveBeenCalledTimes(1);
