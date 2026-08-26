@@ -33,7 +33,7 @@ export function AppLayout(): JSX.Element {
             {status === "authenticated" ? (
               <>
                 <Link className="hidden text-sm font-medium text-slate-600 hover:text-ink sm:inline" to="/portfolio">
-                  {user?.email}
+                  {user?.name}
                 </Link>
                 <button className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50" onClick={signOut} type="button">
                   Sign out

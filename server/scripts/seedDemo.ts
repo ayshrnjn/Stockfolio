@@ -6,6 +6,7 @@ import { createDatabasePool, withTransaction } from "../src/database/pool.js";
 import { createLogger } from "../src/logging/logger.js";
 
 const DEMO_EMAIL = "demo@stockfolio.app";
+const DEMO_NAME = "Demo Investor";
 const DEMO_PASSWORD = "Demo@1234";
 const BCRYPT_ROUNDS = 10;
 
@@ -104,11 +105,11 @@ async function main(): Promise<void> {
   try {
     await withTransaction(database, async (client) => {
       const userResult = await client.query<{ id: string }>(
-        `INSERT INTO users (email, password_hash)
-         VALUES ($1, $2)
-         ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, updated_at = now()
+        `INSERT INTO users (name, email, password_hash)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, password_hash = EXCLUDED.password_hash, updated_at = now()
          RETURNING id::text`,
-        [DEMO_EMAIL, passwordHash],
+        [DEMO_NAME, DEMO_EMAIL, passwordHash],
       );
       const userId = userResult.rows[0]?.id;
       if (!userId) throw new Error("Demo user upsert returned no row");

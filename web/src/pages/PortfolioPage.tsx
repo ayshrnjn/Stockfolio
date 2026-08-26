@@ -58,7 +58,7 @@ export function PortfolioPage(): JSX.Element {
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.18em] text-brand-700">My Portfolio</p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight text-ink">Portfolio overview</h1>
-          <p className="mt-2 text-sm text-slate-500">Signed in as {user?.email}</p>
+          <p className="mt-2 text-sm text-slate-500">Welcome back, {user?.name}</p>
         </div>
         <Link to="/" className="inline-flex items-center justify-center rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white hover:bg-brand-700">Add another stock</Link>
       </div>

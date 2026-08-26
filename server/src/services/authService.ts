@@ -10,12 +10,14 @@ const dummyPasswordHash = bcrypt.hash("stockfolio-invalid-account", PASSWORD_HAS
 
 interface UserRow {
   id: string;
+  name: string;
   email: string;
   password_hash: string;
 }
 
 interface PublicUserRow {
   id: string;
+  name: string;
   email: string;
 }
 
@@ -46,16 +48,16 @@ export class AuthService {
     private readonly jwtSecret: string,
   ) {}
 
-  public async register(email: string, password: string): Promise<AuthResult> {
+  public async register(name: string, email: string, password: string): Promise<AuthResult> {
     const passwordHash = await bcrypt.hash(password, PASSWORD_HASH_ROUNDS);
 
     try {
       const user = await withTransaction(this.database, async (client) => {
         const userResult = await client.query<PublicUserRow>(
-          `INSERT INTO users (email, password_hash)
-           VALUES ($1, $2)
-           RETURNING id::text, email`,
-          [email, passwordHash],
+          `INSERT INTO users (name, email, password_hash)
+           VALUES ($1, $2, $3)
+           RETURNING id::text, name, email`,
+          [name, email, passwordHash],
         );
         const createdUser = userResult.rows[0];
         if (!createdUser) throw new Error("User insert returned no row");
@@ -83,7 +85,7 @@ export class AuthService {
 
   public async login(email: string, password: string): Promise<AuthResult> {
     const result = await this.database.query<UserRow>(
-      `SELECT id::text, email, password_hash
+      `SELECT id::text, name, email, password_hash
        FROM users
        WHERE email = $1
        LIMIT 1`,
@@ -101,13 +103,13 @@ export class AuthService {
 
     return {
       token: createToken(user.id, this.jwtSecret),
-      user: { id: user.id, email: user.email },
+      user: { id: user.id, name: user.name, email: user.email },
     };
   }
 
   public async getCurrentUser(userId: string): Promise<PublicUserRow> {
     const result = await this.database.query<PublicUserRow>(
-      `SELECT id::text, email
+      `SELECT id::text, name, email
        FROM users
        WHERE id = $1
        LIMIT 1`,

@@ -1,11 +1,16 @@
 CREATE TABLE IF NOT EXISTS users (
   id BIGSERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
   email TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT users_email_normalized CHECK (email = lower(email))
 );
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT;
+UPDATE users SET name = initcap(replace(split_part(email, '@', 1), '.', ' ')) WHERE name IS NULL;
+ALTER TABLE users ALTER COLUMN name SET NOT NULL;
 
 CREATE TABLE IF NOT EXISTS portfolios (
   id BIGSERIAL PRIMARY KEY,

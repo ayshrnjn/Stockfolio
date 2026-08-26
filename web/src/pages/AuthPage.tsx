@@ -4,7 +4,8 @@ import { ApiError } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
 type AuthMode = "login" | "register";
-type FieldErrors = Partial<Record<"email" | "password", string>>;
+type FieldName = "name" | "email" | "password" | "confirmPassword";
+type FieldErrors = Partial<Record<FieldName, string>>;
 
 interface LocationState {
   from?: unknown;
@@ -13,7 +14,7 @@ interface LocationState {
 function readServerFieldErrors(details: unknown): FieldErrors {
   if (typeof details !== "object" || details === null || Array.isArray(details)) return {};
   const result: FieldErrors = {};
-  for (const field of ["email", "password"] as const) {
+  for (const field of ["name", "email", "password"] as const) {
     const messages = (details as Record<string, unknown>)[field];
     if (Array.isArray(messages) && typeof messages[0] === "string") result[field] = messages[0];
   }
@@ -25,8 +26,10 @@ export function AuthPage(): JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
   const [mode, setMode] = useState<AuthMode>("login");
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -46,8 +49,10 @@ export function AuthPage(): JSX.Element {
   const submit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     const nextErrors: FieldErrors = {};
+    if (mode === "register" && name.trim().length < 2) nextErrors.name = "Name must contain at least 2 characters";
     if (!email.trim()) nextErrors.email = "Email is required";
     if (password.length < 8) nextErrors.password = "Password must contain at least 8 characters";
+    if (mode === "register" && confirmPassword !== password) nextErrors.confirmPassword = "Passwords do not match";
     if (Object.keys(nextErrors).length > 0) {
       setFieldErrors(nextErrors);
       return;
@@ -57,8 +62,11 @@ export function AuthPage(): JSX.Element {
     setFieldErrors({});
     setFormError(null);
     try {
-      const credentials = { email: email.trim(), password };
-      await (mode === "login" ? login(credentials) : register(credentials));
+      if (mode === "login") {
+        await login({ email: email.trim(), password });
+      } else {
+        await register({ name: name.trim(), email: email.trim(), password });
+      }
       navigate(requestedPath, { replace: true });
     } catch (error) {
       if (error instanceof ApiError) {
@@ -106,6 +114,18 @@ export function AuthPage(): JSX.Element {
           </div>
 
           <form className="mt-7 space-y-5" onSubmit={(event) => void submit(event)} noValidate>
+            {mode === "register" ? (
+              <Field
+                autoComplete="name"
+                error={fieldErrors.name}
+                label="Full name"
+                name="name"
+                onChange={setName}
+                placeholder="Your full name"
+                type="text"
+                value={name}
+              />
+            ) : null}
             <Field
               autoComplete="email"
               error={fieldErrors.email}
@@ -127,6 +147,18 @@ export function AuthPage(): JSX.Element {
               type="password"
               value={password}
             />
+            {mode === "register" ? (
+              <Field
+                autoComplete="new-password"
+                error={fieldErrors.confirmPassword}
+                label="Confirm password"
+                name="confirmPassword"
+                onChange={setConfirmPassword}
+                placeholder="Enter your password again"
+                type="password"
+                value={confirmPassword}
+              />
+            ) : null}
 
             {formError ? (
               <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
@@ -142,6 +174,12 @@ export function AuthPage(): JSX.Element {
               {submitting ? "Please wait…" : mode === "login" ? "Sign in" : "Create account"}
             </button>
           </form>
+          <p className="mt-6 text-center text-sm text-slate-600">
+            {mode === "login" ? "Don't have an account?" : "Already have an account?"}{" "}
+            <button type="button" className="font-semibold text-brand-700 hover:text-brand-600" onClick={() => switchMode(mode === "login" ? "register" : "login")}>
+              {mode === "login" ? "Create one" : "Sign in"}
+            </button>
+          </p>
         </div>
       </section>
     </main>
@@ -172,7 +210,7 @@ interface FieldProps {
   name: string;
   onChange(value: string): void;
   placeholder: string;
-  type: "email" | "password";
+  type: "email" | "password" | "text";
   value: string;
 }
 

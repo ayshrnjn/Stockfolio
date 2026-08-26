@@ -14,9 +14,17 @@ const passwordSchema = z.string()
     message: "Password must contain at most 72 bytes",
   });
 
-const credentialsSchema = z.object({
-  email: z.string().trim().email("Enter a valid email address").max(254)
-    .transform((value) => value.toLowerCase()),
+const emailSchema = z.string().trim().email("Enter a valid email address").max(254)
+  .transform((value) => value.toLowerCase());
+const nameSchema = z.string().trim().min(2, "Name must contain at least 2 characters").max(80)
+  .regex(/^[\p{L}][\p{L}\p{M} .'-]*$/u, "Enter a valid name");
+const loginSchema = z.object({
+  email: emailSchema,
+  password: passwordSchema,
+}).strict();
+const registrationSchema = z.object({
+  name: nameSchema,
+  email: emailSchema,
   password: passwordSchema,
 }).strict();
 
@@ -38,13 +46,13 @@ export function createAuthRouter(database: Pool, jwtSecret: string): Router {
   });
 
   router.post("/register", authenticationRateLimit, asyncHandler(async (request, response) => {
-    const credentials = credentialsSchema.parse(request.body);
-    const result = await authService.register(credentials.email, credentials.password);
+    const credentials = registrationSchema.parse(request.body);
+    const result = await authService.register(credentials.name, credentials.email, credentials.password);
     response.status(201).json({ data: result });
   }));
 
   router.post("/login", authenticationRateLimit, asyncHandler(async (request, response) => {
-    const credentials = credentialsSchema.parse(request.body);
+    const credentials = loginSchema.parse(request.body);
     const result = await authService.login(credentials.email, credentials.password);
     response.json({ data: result });
   }));

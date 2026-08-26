@@ -12,12 +12,17 @@ import { clearAuthToken, getAuthToken, setAuthToken } from "./tokenStorage";
 
 export interface AuthUser {
   id: string;
+  name: string;
   email: string;
 }
 
 interface Credentials {
   email: string;
   password: string;
+}
+
+interface RegistrationCredentials extends Credentials {
+  name: string;
 }
 
 interface AuthResponse {
@@ -31,7 +36,7 @@ interface AuthContextValue {
   status: AuthStatus;
   user: AuthUser | null;
   login(credentials: Credentials): Promise<void>;
-  register(credentials: Credentials): Promise<void>;
+  register(credentials: RegistrationCredentials): Promise<void>;
   logout(): void;
 }
 
@@ -80,7 +85,7 @@ export function AuthProvider({ children }: PropsWithChildren): JSX.Element {
     [authenticate],
   );
   const register = useCallback(
-    (credentials: Credentials) => authenticate("/api/auth/register", credentials),
+    (credentials: RegistrationCredentials) => authenticate("/api/auth/register", credentials),
     [authenticate],
   );
   const logout = useCallback(() => {
