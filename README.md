@@ -51,6 +51,14 @@ The browser never receives the market-data API key. In development, Vite proxies
 
 The web application runs at `http://localhost:5173` and the API at `http://localhost:8080` by default.
 
+### Render SPA routing
+
+The frontend is a React single-page application. In the Render frontend Static Site, add this rule under **Redirects/Rewrites** so refreshing a client-side route such as `/portfolio` or `/stock/NSE/TCS` serves the application instead of returning 404:
+
+- Source: `/*`
+- Destination: `/index.html`
+- Action: `Rewrite`
+
 ## Verification
 
 ```bash
