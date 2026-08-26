@@ -70,6 +70,17 @@ export function PortfolioPage(): JSX.Element {
         </div>
       ) : null}
       {error ? <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{error}</div> : null}
+      {!loading && dashboard && dashboard.issues.length > 0 ? (
+        <section className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900" role="alert" aria-labelledby="portfolio-issues-title">
+          <h2 id="portfolio-issues-title" className="font-semibold">Some older transactions need attention</h2>
+          <p className="mt-1 text-xs leading-5 text-amber-800">Valid holdings are still shown. The affected positions are excluded until their BUY and SELL dates form a valid sequence.</p>
+          <ul className="mt-3 space-y-1 text-xs">
+            {dashboard.issues.map((issue) => (
+              <li key={`${issue.exchange}:${issue.symbol}`}><span className="font-semibold">{issue.exchange}:{issue.symbol}</span> — {issue.message}</li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {loading ? <PortfolioSkeleton /> : null}
       {!loading && dashboard?.holdings.length === 0 ? <EmptyPortfolio /> : null}

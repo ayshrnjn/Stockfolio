@@ -52,4 +52,12 @@ export interface PortfolioSummary {
 export interface PortfolioDashboardResponse {
   holdings: PortfolioHolding[];
   summary: PortfolioSummary;
+  issues: PortfolioLedgerIssue[];
+}
+
+export interface PortfolioLedgerIssue {
+  symbol: string;
+  exchange: IndianExchange;
+  code: "INVALID_TRANSACTION_ORDER";
+  message: string;
 }

@@ -27,6 +27,13 @@ interface OpenLot {
   price: Decimal;
 }
 
+export class InvalidPortfolioLedgerError extends Error {
+  public constructor(message: string) {
+    super(message);
+    this.name = "InvalidPortfolioLedgerError";
+  }
+}
+
 const DAYS_PER_YEAR = 365.25;
 const MINIMUM_RATE = -0.999999;
 const MAXIMUM_RATE = 1_000_000;
@@ -60,7 +67,9 @@ export function calculateFifoPosition(trades: readonly PortfolioTrade[]): FifoPo
 
     while (quantityToMatch.greaterThan(0)) {
       const lot = openLots[0];
-      if (!lot) throw new Error("Invalid portfolio ledger: sell quantity exceeds available purchases");
+      if (!lot) {
+        throw new InvalidPortfolioLedgerError("A sale is dated before sufficient purchases");
+      }
 
       const matchedQuantity = Decimal.min(quantityToMatch, lot.quantity);
       matchedCost = matchedCost.plus(mul(matchedQuantity, lot.price));

@@ -204,6 +204,26 @@ describe("PortfolioDashboardService", () => {
     expect(dashboard.summary.stale).toBe(true);
   });
 
+  it("isolates an invalid legacy ledger without hiding valid holdings", async () => {
+    const { service, getStockDetail } = createService([
+      ledgerRow({ instrument_id: "1", symbol: "HDFCBANK", type: "SELL", quantity: "5.0000", txn_date: "2026-01-10" }),
+      ledgerRow({ instrument_id: "1", symbol: "HDFCBANK", type: "BUY", quantity: "10.0000", txn_date: "2026-01-11" }),
+      ledgerRow({ instrument_id: "2", symbol: "TCS", company_name: "Tata Consultancy Services", type: "BUY", quantity: "2.0000", txn_date: "2026-01-12" }),
+    ]);
+
+    const dashboard = await service.getDashboard("1");
+
+    expect(dashboard.holdings.map((holding) => holding.symbol)).toEqual(["TCS"]);
+    expect(dashboard.issues).toEqual([{
+      symbol: "HDFCBANK",
+      exchange: "NSE",
+      code: "INVALID_TRANSACTION_ORDER",
+      message: "A sale is dated before sufficient purchases. This position is excluded from portfolio totals.",
+    }]);
+    expect(getStockDetail).toHaveBeenCalledTimes(1);
+    expect(getStockDetail).toHaveBeenCalledWith("NSE", "TCS");
+  });
+
   it("never runs more than five quote requests concurrently", async () => {
     let active = 0;
     let maximumActive = 0;

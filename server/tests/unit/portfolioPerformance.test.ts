@@ -25,7 +25,7 @@ describe("portfolio performance calculations", () => {
     expect(() => calculateFifoPosition([
       { type: "BUY", quantity: "1", price: "100", date: "2026-01-10" },
       { type: "SELL", quantity: "2", price: "120", date: "2026-01-11" },
-    ])).toThrow("sell quantity exceeds available purchases");
+    ])).toThrow("A sale is dated before sufficient purchases");
   });
 
   it("calculates a money-weighted annual return from dated cash flows", () => {

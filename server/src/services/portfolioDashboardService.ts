@@ -8,6 +8,8 @@ import {
   calculateFifoPosition,
   calculateXirrPercent,
   type DatedCashFlow,
+  type FifoPosition,
+  InvalidPortfolioLedgerError,
 } from "./portfolioPerformance.js";
 
 interface LedgerRow {
@@ -35,6 +37,7 @@ interface BaseHolding {
 
 interface LedgerPerformance {
   holdings: BaseHolding[];
+  issues: PortfolioLedgerIssue[];
   realizedPnl: string;
   totalBuyCost: string;
   cashFlows: DatedCashFlow[];
@@ -69,9 +72,17 @@ export interface PortfolioSummary {
   stale: boolean;
 }
 
+export interface PortfolioLedgerIssue {
+  symbol: string;
+  exchange: IndianExchange;
+  code: "INVALID_TRANSACTION_ORDER";
+  message: string;
+}
+
 export interface PortfolioDashboard {
   holdings: PortfolioHolding[];
   summary: PortfolioSummary;
+  issues: PortfolioLedgerIssue[];
 }
 
 function deriveLedgerPerformance(rows: readonly LedgerRow[]): LedgerPerformance {
@@ -84,18 +95,34 @@ function deriveLedgerPerformance(rows: readonly LedgerRow[]): LedgerPerformance 
   }
 
   const holdings: BaseHolding[] = [];
+  const issues: PortfolioLedgerIssue[] = [];
+  const validRows: LedgerRow[] = [];
   let realizedPnl = d(0);
   let totalBuyCost = d(0);
 
   for (const group of grouped.values()) {
     const instrument = group[0];
     if (!instrument) continue;
-    const position = calculateFifoPosition(group.map((row) => ({
-      type: row.type,
-      quantity: row.quantity,
-      price: row.price,
-      date: row.txn_date,
-    })));
+    let position: FifoPosition;
+    try {
+      position = calculateFifoPosition(group.map((row) => ({
+        type: row.type,
+        quantity: row.quantity,
+        price: row.price,
+        date: row.txn_date,
+      })));
+    } catch (error) {
+      if (!(error instanceof InvalidPortfolioLedgerError)) throw error;
+      issues.push({
+        symbol: instrument.symbol,
+        exchange: instrument.exchange,
+        code: "INVALID_TRANSACTION_ORDER",
+        message: "A sale is dated before sufficient purchases. This position is excluded from portfolio totals.",
+      });
+      continue;
+    }
+
+    validRows.push(...group);
     realizedPnl = realizedPnl.plus(position.realizedPnl);
     totalBuyCost = totalBuyCost.plus(position.totalBuyCost);
 
@@ -114,12 +141,13 @@ function deriveLedgerPerformance(rows: readonly LedgerRow[]): LedgerPerformance 
     });
   }
 
-  const buyDates = rows.filter((row) => row.type === "BUY").map((row) => row.txn_date).sort();
+  const buyDates = validRows.filter((row) => row.type === "BUY").map((row) => row.txn_date).sort();
   return {
     holdings: holdings.sort((left, right) => left.companyName.localeCompare(right.companyName)),
+    issues,
     realizedPnl: str(realizedPnl),
     totalBuyCost: str(totalBuyCost),
-    cashFlows: rows.map((row) => ({
+    cashFlows: validRows.map((row) => ({
       date: row.txn_date,
       amount: mul(row.quantity, row.price).times(row.type === "BUY" ? -1 : 1),
     })),
@@ -181,7 +209,7 @@ export class PortfolioDashboardService {
       };
     });
 
-    return { holdings, summary: this.buildSummary(ledger, holdings) };
+    return { holdings, summary: this.buildSummary(ledger, holdings), issues: ledger.issues };
   }
 
   private buildSummary(ledger: LedgerPerformance, holdings: readonly PortfolioHolding[]): PortfolioSummary {
