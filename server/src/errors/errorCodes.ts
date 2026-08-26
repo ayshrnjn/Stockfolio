@@ -1,0 +1,14 @@
+export const ERROR_CODES = [
+  "VALIDATION_ERROR",
+  "UNAUTHORIZED",
+  "EMAIL_ALREADY_EXISTS",
+  "NOT_FOUND",
+  "INSUFFICIENT_QUANTITY",
+  "IDEMPOTENCY_KEY_REUSED",
+  "UPSTREAM_UNAVAILABLE",
+  "RATE_LIMITED",
+  "INTERNAL",
+] as const;
+
+export type ErrorCode = typeof ERROR_CODES[number];
+

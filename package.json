@@ -1,0 +1,18 @@
+{
+  "name": "stockfolio",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.19.0",
+  "engines": {
+    "node": ">=20.12"
+  },
+  "scripts": {
+    "build": "pnpm --recursive --if-present build",
+    "dev": "pnpm --parallel --filter stockfolio-server --filter stockfolio-web dev",
+    "db:init": "pnpm --filter stockfolio-server db:init",
+    "seed": "pnpm --filter stockfolio-server seed",
+    "test": "pnpm --recursive --if-present test",
+    "typecheck": "pnpm --recursive --if-present typecheck",
+    "verify": "pnpm typecheck && pnpm test && pnpm build"
+  }
+}

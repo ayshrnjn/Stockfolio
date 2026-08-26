@@ -1,0 +1,90 @@
+[
+  {
+    "id": "S0003018",
+    "commonName": "Reliance Industries",
+    "mgIndustry": null,
+    "mgSector": null,
+    "stockType": "Equity",
+    "exchangeCodeBse": "500325",
+    "exchangeCodeNsi": "RELIANCE",
+    "bseRic": "RELI.BO",
+    "nseRic": "RELI.NS"
+  },
+  {
+    "id": "S0003264",
+    "commonName": "Reliance Power",
+    "mgIndustry": null,
+    "mgSector": null,
+    "stockType": "Equity",
+    "exchangeCodeBse": "532939",
+    "exchangeCodeNsi": "RPOWER",
+    "bseRic": "RPOL.BO",
+    "nseRic": "RPOL.NS"
+  },
+  {
+    "id": "S0003245",
+    "commonName": "Reliance Infrastructure",
+    "mgIndustry": null,
+    "mgSector": null,
+    "stockType": "Equity",
+    "exchangeCodeBse": "500390",
+    "exchangeCodeNsi": "RELINFRA",
+    "bseRic": "RLIN.BO",
+    "nseRic": "RLIN.NS"
+  },
+  {
+    "id": "S0003440",
+    "commonName": "Reliance Industrial Infrastructure",
+    "mgIndustry": null,
+    "mgSector": null,
+    "stockType": "Equity",
+    "exchangeCodeBse": "523445",
+    "exchangeCodeNsi": "RIIL",
+    "bseRic": "REII.BO",
+    "nseRic": "REII.NS"
+  },
+  {
+    "id": "S0003285",
+    "commonName": "Reliance Communications",
+    "mgIndustry": null,
+    "mgSector": null,
+    "stockType": "Equity",
+    "exchangeCodeBse": "532712",
+    "exchangeCodeNsi": "RCOM",
+    "bseRic": "RLCM.BO",
+    "nseRic": "RLCM.NS"
+  },
+  {
+    "id": "S0003700",
+    "commonName": "Reliance Home Finance",
+    "mgIndustry": null,
+    "mgSector": null,
+    "stockType": "Equity",
+    "exchangeCodeBse": "540709",
+    "exchangeCodeNsi": "RHFL",
+    "bseRic": "RLIC.BO",
+    "nseRic": "RLIC.NS"
+  },
+  {
+    "id": "S0000359",
+    "commonName": "Reliance Chemotex Industries",
+    "mgIndustry": null,
+    "mgSector": null,
+    "stockType": "Equity",
+    "exchangeCodeBse": "503162",
+    "exchangeCodeNsi": "RELCHEMQ",
+    "bseRic": "RLCH.BO",
+    "nseRic": "RLCH.NS"
+  },
+  {
+    "id": "E00093",
+    "commonName": "Reliance Mutual Fund - R Shares Nifty ETF",
+    "mgIndustry": null,
+    "mgSector": null,
+    "stockType": null,
+    "exchangeCodeBse": "537484",
+    "exchangeCodeNsi": null,
+    "bseRic": "RELN.BO",
+    "nseRic": "RELN.NS"
+  }
+]
