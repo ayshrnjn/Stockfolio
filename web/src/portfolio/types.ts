@@ -13,21 +13,20 @@ export interface PortfolioTransaction {
 }
 
 export interface PortfolioHolding {
-  instrumentId: string;
   symbol: string;
   exchange: IndianExchange;
   companyName: string;
-  sector: string;
   quantity: string;
   avgBuyPrice: string;
   investment: string;
+  realizedPnl: string;
   latestBuyDate: string | null;
   latestSellDate: string | null;
   ltp: string | null;
-  previousClose: string | null;
   currentValue: string | null;
-  overallPnl: string | null;
-  overallPnlPct: string | null;
+  unrealizedPnl: string | null;
+  totalPnl: string | null;
+  totalPnlPct: string | null;
   dayPnl: string | null;
   dayPnlPct: string | null;
   quoteStatus: "live" | "stale" | "unavailable";
@@ -36,14 +35,15 @@ export interface PortfolioHolding {
 
 export interface PortfolioSummary {
   totalInvestment: string;
-  currentValue: string;
-  overallPnl: string;
-  overallPnlPct: string;
-  absoluteReturnPct: string;
-  annualizedReturnPct: string;
+  currentValue: string | null;
+  realizedPnl: string;
+  unrealizedPnl: string | null;
+  totalPnl: string | null;
+  absoluteReturnPct: string | null;
+  annualizedReturnPct: string | null;
   returnSince: string | null;
-  dayPnl: string;
-  dayPnlPct: string;
+  dayPnl: string | null;
+  dayPnlPct: string | null;
   holdingsCount: number;
   asOf: string;
   stale: boolean;

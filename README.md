@@ -2,6 +2,16 @@
 
 StockFolio is a TypeScript full-stack application for tracking Indian equity portfolios across NSE and BSE. It keeps market-data integration behind the server boundary and models portfolio changes as immutable transactions so holdings and profit/loss can be calculated reliably.
 
+## Portfolio accounting
+
+- Users record the quantity, execution price, and exchange trade date shown on their broker contract note.
+- Today's market price is an editable form suggestion. Past dates intentionally start with an empty price so a current quote is never mistaken for a historical execution.
+- The server persists the submitted execution price; later market-data changes never rewrite a transaction.
+- SELL requests are rejected unless sufficient quantity exists on the selected date and every later ledger balance remains non-negative.
+- Remaining cost and realized profit/loss use FIFO lot matching. Total profit/loss combines realized results with the unrealized value of open lots.
+- Absolute return uses total purchase cost. Annualized return is money-weighted XIRR over dated purchases, sales, and the current value of open holdings.
+- Transactions use date-only accounting by design; intraday execution time is outside the application scope.
+
 ## Architecture
 
 - `web`: React 18, React Router, Vite, and Tailwind CSS
@@ -44,8 +54,7 @@ The web application runs at `http://localhost:5173` and the API at `http://local
 ## Verification
 
 ```bash
-pnpm typecheck
-pnpm build
+pnpm verify
 ```
 
 `GET /live` is a process liveness check. `GET /health` is a readiness check and returns `503` until PostgreSQL is reachable.

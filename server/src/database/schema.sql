@@ -46,6 +46,8 @@ CREATE TABLE IF NOT EXISTS transactions (
   quantity NUMERIC(18,4) NOT NULL,
   price NUMERIC(18,4) NOT NULL,
   fees NUMERIC(18,4) NOT NULL DEFAULT 0,
+  -- Portfolio accounting intentionally uses the exchange trade date. Intraday
+  -- execution time is outside this application's scope.
   txn_date DATE NOT NULL,
   notes TEXT,
   client_request_id UUID NOT NULL,

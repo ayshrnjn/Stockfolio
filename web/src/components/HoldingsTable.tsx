@@ -19,7 +19,7 @@ export function HoldingsTable({ holdings, onTrade }: HoldingsTableProps): JSX.El
         <table className="w-full min-w-[1320px] text-left">
           <thead className="bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
             <tr>
-              <th className="px-6 py-3">Company</th><th className="px-4 py-3 text-right">Qty</th><th className="px-4 py-3 text-right">Avg. buy price</th><th className="px-4 py-3 text-right">LTP</th><th className="px-4 py-3 text-right">Investment</th><th className="px-4 py-3 text-right">Current value</th><th className="px-4 py-3 text-right">Overall G/L</th><th className="px-4 py-3 text-right">Day's G/L</th><th className="px-4 py-3 text-right">Latest buy</th><th className="px-6 py-3 text-right">Latest sell</th>
+              <th className="px-6 py-3">Company</th><th className="px-4 py-3 text-right">Qty</th><th className="px-4 py-3 text-right">FIFO avg. price</th><th className="px-4 py-3 text-right">LTP</th><th className="px-4 py-3 text-right">Open cost</th><th className="px-4 py-3 text-right">Current value</th><th className="px-4 py-3 text-right">Total G/L</th><th className="px-4 py-3 text-right">Day's G/L</th><th className="px-4 py-3 text-right">Latest buy</th><th className="px-6 py-3 text-right">Latest sell</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -38,7 +38,7 @@ export function HoldingsTable({ holdings, onTrade }: HoldingsTableProps): JSX.El
                 <MoneyCell value={formatCurrency(holding.ltp)} />
                 <MoneyCell value={formatCurrency(holding.investment)} />
                 <MoneyCell value={formatCurrency(holding.currentValue)} />
-                <PnlCell money={holding.overallPnl} percent={holding.overallPnlPct} />
+                <PnlCell money={holding.totalPnl} percent={holding.totalPnlPct} />
                 <PnlCell money={holding.dayPnl} percent={holding.dayPnlPct} />
                 <DateCell value={holding.latestBuyDate} />
                 <DateCell value={holding.latestSellDate} className="px-6" />

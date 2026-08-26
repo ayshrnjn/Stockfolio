@@ -97,8 +97,8 @@ describe("PortfolioDashboardService", () => {
       avgBuyPrice: "120.0000",
       investment: "3600.0000",
       currentValue: "6000.0000",
-      overallPnl: "2400.0000",
-      overallPnlPct: "66.6667",
+      totalPnl: "2400.0000",
+      totalPnlPct: "66.6667",
       latestBuyDate: "2025-08-26",
       latestSellDate: null,
     });
@@ -119,16 +119,52 @@ describe("PortfolioDashboardService", () => {
     });
   });
 
-  it("excludes a holding whose BUY and SELL quantities net to zero", async () => {
+  it("includes FIFO realized profit in holding and portfolio performance", async () => {
+    const { service } = createService([
+      ledgerRow({ type: "BUY", quantity: "10.0000", price: "100.0000", txn_date: "2026-01-10" }),
+      ledgerRow({ type: "BUY", quantity: "5.0000", price: "120.0000", txn_date: "2026-02-10" }),
+      ledgerRow({ type: "SELL", quantity: "8.0000", price: "150.0000", txn_date: "2026-03-10" }),
+    ]);
+
+    const dashboard = await service.getDashboard("1");
+
+    expect(dashboard.holdings[0]).toMatchObject({
+      quantity: "7.0000",
+      avgBuyPrice: "114.2857",
+      investment: "800.0000",
+      realizedPnl: "400.0000",
+      unrealizedPnl: "600.0000",
+      totalPnl: "1000.0000",
+      totalPnlPct: "62.5000",
+    });
+    expect(dashboard.summary).toMatchObject({
+      totalInvestment: "800.0000",
+      currentValue: "1400.0000",
+      realizedPnl: "400.0000",
+      unrealizedPnl: "600.0000",
+      totalPnl: "1000.0000",
+      absoluteReturnPct: "62.5000",
+    });
+  });
+
+  it("keeps realized profit from a completely sold position in the summary", async () => {
     const { service, getStockDetail } = createService([
-      ledgerRow({ type: "BUY", quantity: "5.0000" }),
-      ledgerRow({ type: "SELL", quantity: "5.0000" }),
+      ledgerRow({ type: "BUY", quantity: "5.0000", price: "100.0000" }),
+      ledgerRow({ type: "SELL", quantity: "5.0000", price: "150.0000" }),
     ]);
 
     const dashboard = await service.getDashboard("1");
 
     expect(dashboard.holdings).toEqual([]);
-    expect(dashboard.summary.holdingsCount).toBe(0);
+    expect(dashboard.summary).toMatchObject({
+      holdingsCount: 0,
+      totalInvestment: "0.0000",
+      currentValue: "0.0000",
+      realizedPnl: "250.0000",
+      unrealizedPnl: "0.0000",
+      totalPnl: "250.0000",
+      absoluteReturnPct: "50.0000",
+    });
     expect(getStockDetail).not.toHaveBeenCalled();
   });
 
@@ -140,8 +176,7 @@ describe("PortfolioDashboardService", () => {
     expect(dashboard.summary).toMatchObject({
       totalInvestment: "0.0000",
       currentValue: "0.0000",
-      overallPnl: "0.0000",
-      overallPnlPct: "0.0000",
+      totalPnl: "0.0000",
       absoluteReturnPct: "0.0000",
       annualizedReturnPct: "0.0000",
       dayPnlPct: "0.0000",

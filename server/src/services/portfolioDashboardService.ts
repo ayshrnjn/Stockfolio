@@ -1,16 +1,19 @@
 import pLimit from "p-limit";
 import type { Pool } from "pg";
+import { currentIndiaDate } from "../lib/marketHours.js";
 import { d, div, mul, pct, str, sub } from "../lib/money.js";
 import type { IndianExchange } from "./marketDataTypes.js";
 import type { MarketDataService } from "./marketDataService.js";
+import {
+  calculateFifoPosition,
+  calculateXirrPercent,
+  type DatedCashFlow,
+} from "./portfolioPerformance.js";
 
 interface LedgerRow {
-  instrument_id: string;
   symbol: string;
   exchange: IndianExchange;
   company_name: string;
-  sector: string | null;
-  industry: string | null;
   type: "BUY" | "SELL";
   quantity: string;
   price: string;
@@ -18,24 +21,32 @@ interface LedgerRow {
 }
 
 interface BaseHolding {
-  instrumentId: string;
   symbol: string;
   exchange: IndianExchange;
   companyName: string;
-  sector: string;
   quantity: string;
   avgBuyPrice: string;
   investment: string;
+  realizedPnl: string;
+  totalBuyCost: string;
   latestBuyDate: string | null;
   latestSellDate: string | null;
 }
 
-export interface PortfolioHolding extends BaseHolding {
+interface LedgerPerformance {
+  holdings: BaseHolding[];
+  realizedPnl: string;
+  totalBuyCost: string;
+  cashFlows: DatedCashFlow[];
+  returnSince: string | null;
+}
+
+export interface PortfolioHolding extends Omit<BaseHolding, "totalBuyCost"> {
   ltp: string | null;
-  previousClose: string | null;
   currentValue: string | null;
-  overallPnl: string | null;
-  overallPnlPct: string | null;
+  unrealizedPnl: string | null;
+  totalPnl: string | null;
+  totalPnlPct: string | null;
   dayPnl: string | null;
   dayPnlPct: string | null;
   quoteStatus: "live" | "stale" | "unavailable";
@@ -44,14 +55,15 @@ export interface PortfolioHolding extends BaseHolding {
 
 export interface PortfolioSummary {
   totalInvestment: string;
-  currentValue: string;
-  overallPnl: string;
-  overallPnlPct: string;
-  absoluteReturnPct: string;
-  annualizedReturnPct: string;
+  currentValue: string | null;
+  realizedPnl: string;
+  unrealizedPnl: string | null;
+  totalPnl: string | null;
+  absoluteReturnPct: string | null;
+  annualizedReturnPct: string | null;
   returnSince: string | null;
-  dayPnl: string;
-  dayPnlPct: string;
+  dayPnl: string | null;
+  dayPnlPct: string | null;
   holdingsCount: number;
   asOf: string;
   stale: boolean;
@@ -62,49 +74,57 @@ export interface PortfolioDashboard {
   summary: PortfolioSummary;
 }
 
-function deriveBaseHoldings(rows: LedgerRow[]): BaseHolding[] {
+function deriveLedgerPerformance(rows: readonly LedgerRow[]): LedgerPerformance {
   const grouped = new Map<string, LedgerRow[]>();
   for (const row of rows) {
     const key = `${row.exchange}:${row.symbol}`;
-    grouped.set(key, [...(grouped.get(key) ?? []), row]);
+    const group = grouped.get(key);
+    if (group) group.push(row);
+    else grouped.set(key, [row]);
   }
 
   const holdings: BaseHolding[] = [];
+  let realizedPnl = d(0);
+  let totalBuyCost = d(0);
+
   for (const group of grouped.values()) {
-    const first = group[0];
-    if (!first) continue;
-    let buyQuantity = d(0);
-    let buyCost = d(0);
-    let sellQuantity = d(0);
-    let latestBuyDate: string | null = null;
-    let latestSellDate: string | null = null;
-    for (const transaction of group) {
-      if (transaction.type === "BUY") {
-        buyQuantity = buyQuantity.plus(transaction.quantity);
-        buyCost = buyCost.plus(mul(transaction.quantity, transaction.price));
-        if (!latestBuyDate || transaction.txn_date > latestBuyDate) latestBuyDate = transaction.txn_date;
-      } else {
-        sellQuantity = sellQuantity.plus(transaction.quantity);
-        if (!latestSellDate || transaction.txn_date > latestSellDate) latestSellDate = transaction.txn_date;
-      }
-    }
-    const quantity = buyQuantity.minus(sellQuantity);
-    if (quantity.lessThanOrEqualTo(0)) continue;
-    const avgBuyPrice = div(buyCost, buyQuantity);
+    const instrument = group[0];
+    if (!instrument) continue;
+    const position = calculateFifoPosition(group.map((row) => ({
+      type: row.type,
+      quantity: row.quantity,
+      price: row.price,
+      date: row.txn_date,
+    })));
+    realizedPnl = realizedPnl.plus(position.realizedPnl);
+    totalBuyCost = totalBuyCost.plus(position.totalBuyCost);
+
+    if (position.quantity.isZero()) continue;
     holdings.push({
-      instrumentId: first.instrument_id,
-      symbol: first.symbol,
-      exchange: first.exchange,
-      companyName: first.company_name,
-      sector: first.sector ?? first.industry ?? "Other",
-      quantity: str(quantity),
-      avgBuyPrice: str(avgBuyPrice),
-      investment: str(mul(quantity, avgBuyPrice)),
-      latestBuyDate,
-      latestSellDate,
+      symbol: instrument.symbol,
+      exchange: instrument.exchange,
+      companyName: instrument.company_name,
+      quantity: str(position.quantity),
+      avgBuyPrice: str(div(position.remainingCost, position.quantity)),
+      investment: str(position.remainingCost),
+      realizedPnl: str(position.realizedPnl),
+      totalBuyCost: str(position.totalBuyCost),
+      latestBuyDate: position.latestBuyDate,
+      latestSellDate: position.latestSellDate,
     });
   }
-  return holdings.sort((left, right) => left.companyName.localeCompare(right.companyName));
+
+  const buyDates = rows.filter((row) => row.type === "BUY").map((row) => row.txn_date).sort();
+  return {
+    holdings: holdings.sort((left, right) => left.companyName.localeCompare(right.companyName)),
+    realizedPnl: str(realizedPnl),
+    totalBuyCost: str(totalBuyCost),
+    cashFlows: rows.map((row) => ({
+      date: row.txn_date,
+      amount: mul(row.quantity, row.price).times(row.type === "BUY" ? -1 : 1),
+    })),
+    returnSince: buyDates[0] ?? null,
+  };
 }
 
 export class PortfolioDashboardService {
@@ -115,22 +135,24 @@ export class PortfolioDashboardService {
 
   public async getDashboard(userId: string): Promise<PortfolioDashboard> {
     const rows = await this.loadLedger(userId);
-    const baseHoldings = deriveBaseHoldings(rows);
-    const limit = pLimit(5);
-    const settledQuotes = await Promise.allSettled(baseHoldings.map((holding) => limit(
+    const ledger = deriveLedgerPerformance(rows);
+    const quoteLimit = pLimit(5);
+    const settledQuotes = await Promise.allSettled(ledger.holdings.map((holding) => quoteLimit(
       () => this.marketData.getStockDetail(holding.exchange, holding.symbol),
     )));
 
-    const holdings: PortfolioHolding[] = baseHoldings.map((holding, index) => {
+    const holdings: PortfolioHolding[] = ledger.holdings.map((holding, index) => {
       const settled = settledQuotes[index];
-      if (!settled || settled.status === "rejected" || !settled.value.value.quote.ltp) {
+      const { totalBuyCost, ...publicHolding } = holding;
+      const ltp = settled?.status === "fulfilled" ? settled.value.value.quote.ltp : null;
+      if (!settled || settled.status === "rejected" || !ltp) {
         return {
-          ...holding,
+          ...publicHolding,
           ltp: null,
-          previousClose: null,
           currentValue: null,
-          overallPnl: null,
-          overallPnlPct: null,
+          unrealizedPnl: null,
+          totalPnl: null,
+          totalPnlPct: null,
           dayPnl: null,
           dayPnlPct: null,
           quoteStatus: "unavailable",
@@ -139,81 +161,82 @@ export class PortfolioDashboardService {
       }
 
       const quote = settled.value.value.quote;
-      const ltp = quote.ltp!;
       const currentValue = mul(holding.quantity, ltp);
-      const overallPnl = sub(currentValue, holding.investment);
-      const previousClose = quote.previousClose;
-      const dayPnl = previousClose
-        ? mul(holding.quantity, sub(ltp, previousClose))
+      const unrealizedPnl = sub(currentValue, holding.investment);
+      const totalPnl = unrealizedPnl.plus(holding.realizedPnl);
+      const dayPnl = quote.previousClose
+        ? mul(holding.quantity, sub(ltp, quote.previousClose))
         : null;
       return {
-        ...holding,
+        ...publicHolding,
         ltp: str(ltp),
-        previousClose: previousClose ? str(previousClose) : null,
         currentValue: str(currentValue),
-        overallPnl: str(overallPnl),
-        overallPnlPct: str(pct(overallPnl, holding.investment)),
+        unrealizedPnl: str(unrealizedPnl),
+        totalPnl: str(totalPnl),
+        totalPnlPct: str(pct(totalPnl, totalBuyCost)),
         dayPnl: dayPnl ? str(dayPnl) : null,
-        dayPnlPct: previousClose ? str(pct(sub(ltp, previousClose), previousClose)) : null,
+        dayPnlPct: quote.previousClose ? str(pct(sub(ltp, quote.previousClose), quote.previousClose)) : null,
         quoteStatus: settled.value.stale ? "stale" : "live",
         asOf: settled.value.asOf,
       };
     });
 
-    const availableHoldings = holdings.filter((holding) => holding.currentValue !== null);
-    const portfolioCurrentValue = availableHoldings.reduce(
-      (total, holding) => total.plus(holding.currentValue!),
+    return { holdings, summary: this.buildSummary(ledger, holdings) };
+  }
+
+  private buildSummary(ledger: LedgerPerformance, holdings: readonly PortfolioHolding[]): PortfolioSummary {
+    const valuationComplete = holdings.every((holding) => holding.currentValue !== null);
+    const dayValuationComplete = valuationComplete && holdings.every((holding) => holding.dayPnl !== null);
+    const totalInvestment = holdings.reduce((total, holding) => total.plus(holding.investment), d(0));
+    const availableCurrentValue = holdings.reduce(
+      (total, holding) => total.plus(holding.currentValue ?? 0),
       d(0),
     );
-    const comparableInvestment = availableHoldings.reduce(
-      (total, holding) => total.plus(holding.investment),
+    const availableUnrealizedPnl = holdings.reduce(
+      (total, holding) => total.plus(holding.unrealizedPnl ?? 0),
       d(0),
     );
-    const overallPnl = portfolioCurrentValue.minus(comparableInvestment);
-    const dayPnl = availableHoldings.reduce(
-      (total, holding) => total.plus(holding.dayPnl ?? 0),
-      d(0),
-    );
-    const previousPortfolioValue = portfolioCurrentValue.minus(dayPnl);
-    const asOf = holdings.map((holding) => holding.asOf).filter((value): value is string => Boolean(value)).sort().at(-1)
-      ?? new Date().toISOString();
-    const stale = holdings.some((holding) => holding.quoteStatus !== "live");
-    const activeInstrumentIds = new Set(baseHoldings.map((holding) => holding.instrumentId));
-    const returnSince = rows
-      .filter((row) => row.type === "BUY" && activeInstrumentIds.has(row.instrument_id))
-      .map((row) => row.txn_date)
+    const availableDayPnl = holdings.reduce((total, holding) => total.plus(holding.dayPnl ?? 0), d(0));
+    const calculatedTotalPnl = d(ledger.realizedPnl).plus(availableUnrealizedPnl);
+    const currentValue = valuationComplete ? availableCurrentValue : null;
+    const unrealizedPnl = valuationComplete ? availableUnrealizedPnl : null;
+    const totalPnl = valuationComplete ? calculatedTotalPnl : null;
+    const dayPnl = dayValuationComplete ? availableDayPnl : null;
+    const previousPortfolioValue = currentValue !== null && dayPnl !== null
+      ? currentValue.minus(dayPnl)
+      : null;
+    const cashFlows = currentValue !== null && currentValue.greaterThan(0)
+      ? [...ledger.cashFlows, { date: currentIndiaDate(), amount: currentValue }]
+      : ledger.cashFlows;
+    const asOf = holdings
+      .map((holding) => holding.asOf)
+      .filter((value): value is string => Boolean(value))
       .sort()
-      .at(0) ?? null;
-    const absoluteReturnPct = pct(overallPnl, comparableInvestment);
-    const annualizedReturnPct = this.calculateAnnualizedReturn(
-      comparableInvestment,
-      portfolioCurrentValue,
-      returnSince,
-    );
+      .at(-1) ?? new Date().toISOString();
 
     return {
-      holdings,
-      summary: {
-        totalInvestment: str(comparableInvestment),
-        currentValue: str(portfolioCurrentValue),
-        overallPnl: str(overallPnl),
-        overallPnlPct: str(absoluteReturnPct),
-        absoluteReturnPct: str(absoluteReturnPct),
-        annualizedReturnPct: str(annualizedReturnPct),
-        returnSince,
-        dayPnl: str(dayPnl),
-        dayPnlPct: str(pct(dayPnl, previousPortfolioValue)),
-        holdingsCount: holdings.length,
-        asOf,
-        stale,
-      },
+      totalInvestment: str(totalInvestment),
+      currentValue: currentValue !== null ? str(currentValue) : null,
+      realizedPnl: ledger.realizedPnl,
+      unrealizedPnl: unrealizedPnl !== null ? str(unrealizedPnl) : null,
+      totalPnl: totalPnl !== null ? str(totalPnl) : null,
+      absoluteReturnPct: totalPnl !== null ? str(pct(totalPnl, ledger.totalBuyCost)) : null,
+      annualizedReturnPct: valuationComplete ? str(calculateXirrPercent(cashFlows)) : null,
+      returnSince: ledger.returnSince,
+      dayPnl: dayPnl !== null ? str(dayPnl) : null,
+      dayPnlPct: dayPnl !== null && previousPortfolioValue !== null
+        ? str(pct(dayPnl, previousPortfolioValue))
+        : null,
+      holdingsCount: holdings.length,
+      asOf,
+      stale: holdings.some((holding) => holding.quoteStatus !== "live"),
     };
   }
 
   private async loadLedger(userId: string): Promise<LedgerRow[]> {
     const result = await this.database.query<LedgerRow>(
-      `SELECT i.id::text AS instrument_id, i.symbol, i.exchange, i.company_name,
-              i.sector, i.industry, t.type, t.quantity::text, t.price::text,
+      `SELECT i.symbol, i.exchange, i.company_name, t.type,
+              t.quantity::text, t.price::text,
               to_char(t.txn_date, 'YYYY-MM-DD') AS txn_date
          FROM transactions t
          JOIN portfolios p ON p.id = t.portfolio_id
@@ -224,18 +247,4 @@ export class PortfolioDashboardService {
     );
     return result.rows;
   }
-
-  private calculateAnnualizedReturn(
-    investment: ReturnType<typeof d>,
-    currentValue: ReturnType<typeof d>,
-    returnSince: string | null,
-  ): ReturnType<typeof d> {
-    if (!returnSince || investment.lessThanOrEqualTo(0) || currentValue.lessThanOrEqualTo(0)) return d(0);
-    const start = Date.parse(`${returnSince}T00:00:00Z`);
-    if (!Number.isFinite(start)) return d(0);
-    const elapsedDays = Math.max(1, (Date.now() - start) / 86_400_000);
-    const years = d(elapsedDays).dividedBy("365.25");
-    return currentValue.dividedBy(investment).pow(d(1).dividedBy(years)).minus(1).times(100);
-  }
-
 }
