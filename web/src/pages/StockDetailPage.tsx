@@ -27,6 +27,7 @@ export function StockDetailPage(): JSX.Element {
   const [error, setError] = useState<{ message: string; notFound: boolean } | null>(null);
   const [loading, setLoading] = useState(validInstrument);
   const [transactionOpen, setTransactionOpen] = useState(false);
+  const [requestVersion, setRequestVersion] = useState(0);
 
   useEffect(() => {
     if (!validInstrument || !normalizedExchange) return;
@@ -47,17 +48,27 @@ export function StockDetailPage(): JSX.Element {
       if (!controller.signal.aborted) setLoading(false);
     });
     return () => controller.abort();
-  }, [normalizedExchange, normalizedSymbol, validInstrument]);
+  }, [normalizedExchange, normalizedSymbol, validInstrument, requestVersion]);
 
   if (!validInstrument) return <StockError title="This stock link is not valid." message="Check the exchange and symbol, or find the company through search." />;
   if (loading) return <StockDetailSkeleton />;
   if (error) return (
     <StockError
-      title={error.notFound ? "Stock not found" : "Market data is unavailable"}
-      message={error.message}
+      title={error.notFound ? "Market data unavailable" : "Unable to load market data"}
+      message={error.notFound
+        ? "Market data for this stock is currently unavailable from the provider. Please try again later or search for another stock."
+        : error.message}
+      onRetry={error.notFound ? undefined : () => setRequestVersion((version) => version + 1)}
     />
   );
-  if (!response || !normalizedExchange) return <StockError title="Stock unavailable" message="We could not load this instrument." />;
+  if (!response || !normalizedExchange) {
+    return (
+      <StockError
+        title="Market data unavailable"
+        message="Market data for this stock is currently unavailable from the provider. Please try again later or search for another stock."
+      />
+    );
+  }
 
   return (
     <main className="mx-auto min-h-[calc(100vh-7rem)] max-w-7xl px-5 py-8 sm:px-8 sm:py-10">
@@ -196,14 +207,38 @@ function Metric({ label, value }: { label: string; value: string }): JSX.Element
   return <div><dt className="text-xs font-medium text-slate-500">{label}</dt><dd className="mt-1.5 text-sm font-semibold tabular-nums text-ink">{value}</dd></div>;
 }
 
-function StockError({ title, message }: { title: string; message: string }): JSX.Element {
+function StockError({
+  title,
+  message,
+  onRetry,
+}: {
+  title: string;
+  message: string;
+  onRetry?: (() => void) | undefined;
+}): JSX.Element {
   return (
     <main className="mx-auto grid min-h-[calc(100vh-7rem)] max-w-xl place-items-center px-6 text-center">
       <section>
         <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-red-50 text-2xl text-loss">!</div>
         <h1 className="mt-5 text-3xl font-semibold text-ink">{title}</h1>
         <p className="mt-3 text-sm leading-6 text-slate-600">{message}</p>
-        <Link className="mt-6 inline-flex rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white" to="/">Search stocks</Link>
+        <div className="mt-6 flex flex-wrap justify-center gap-3">
+          {onRetry ? (
+            <button
+              type="button"
+              className="inline-flex rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              onClick={onRetry}
+            >
+              Try again
+            </button>
+          ) : null}
+          <Link
+            className="inline-flex rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white hover:bg-brand-700"
+            to="/"
+          >
+            Back to search
+          </Link>
+        </div>
       </section>
     </main>
   );
