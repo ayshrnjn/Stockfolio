@@ -62,6 +62,30 @@ The backend validates important portfolio edge cases:
 | Database | PostgreSQL / Neon |
 | Market data | IndianAPI and Yahoo Finance |
 
+## Repository layout
+
+```text
+Stock-Portfolio-Management/
+├── server/
+│   ├── scripts/                 # Database initialization and utility scripts
+│   ├── src/
+│   │   ├── config/              # Environment configuration
+│   │   ├── database/            # PostgreSQL connection and schema
+│   │   ├── middleware/          # Authentication and error handling
+│   │   ├── providers/           # Market-data integrations
+│   │   ├── routes/              # API routes
+│   │   └── services/            # Business logic and calculations
+│   └── tests/                   # Backend tests
+├── web/
+│   └── src/
+│       ├── api/                 # API client
+│       ├── auth/                # Authentication state and protected routes
+│       ├── components/          # Reusable UI components
+│       └── pages/               # Application pages
+├── package.json                 # Workspace commands
+└── pnpm-lock.yaml               # Locked dependencies
+```
+
 ## Local setup
 
 Requirements: Node.js 24, pnpm 11.19.0, PostgreSQL/Neon, and an IndianAPI key.
