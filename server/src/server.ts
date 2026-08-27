@@ -12,7 +12,7 @@ loadLocalEnvironment();
 const environment = readEnvironment();
 const logger = createLogger(environment.logLevel);
 const database = createDatabasePool(environment.database);
-const marketData = createMarketDataService(readMarketDataConfig());
+const marketData = createMarketDataService(readMarketDataConfig(), logger);
 const app = createApp({ environment, database, logger, marketData });
 const server = createServer(app);
 

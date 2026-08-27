@@ -93,6 +93,19 @@ export class IndianApiClient {
     throw lastContractError ?? new ProviderContractError("historical data");
   }
 
+  public async getHistoricalDataByName(
+    stockName: string,
+    period: ProviderHistoryPeriod = "1m",
+  ): Promise<ProviderHistory> {
+    const normalizedName = companyNameSchema.parse(stockName);
+    const normalizedPeriod = historyPeriodSchema.parse(period);
+    return parseHistoryResponse(await this.get("/historical_data", {
+      stock_name: normalizedName,
+      period: normalizedPeriod,
+      filter: "price",
+    }));
+  }
+
   public async getNseMostActive(): Promise<ProviderMostActiveRow[]> {
     return parseMostActiveResponse(await this.get("/NSE_most_active", {}));
   }

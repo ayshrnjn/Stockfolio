@@ -1,5 +1,6 @@
 import { Decimal } from "decimal.js";
 import pLimit from "p-limit";
+import type { Logger } from "pino";
 import type { MarketDataConfig } from "../config/marketDataConfig.js";
 import { AppError } from "../errors/AppError.js";
 import { InMemoryCache, type CacheResult, type CacheStats, type CacheStore } from "../lib/cache.js";
@@ -8,7 +9,7 @@ import { defaultMarketDataTtl } from "../lib/marketHours.js";
 import { IndianApiClient, type ProviderHistoryPeriod } from "../providers/indianApi/client.js";
 import { ProviderContractError, ProviderNotFoundError, type ProviderHistory, type ProviderStockDetail } from "../providers/indianApi/schemas.js";
 import type { StockSearchResult } from "../providers/indianApi/types.js";
-import { YahooFinanceClient, type YahooIndexSymbol } from "../providers/yahooFinance/client.js";
+import { YahooFinanceClient, type YahooIndexQuote, type YahooIndexSymbol } from "../providers/yahooFinance/client.js";
 import type { ChartRange, IndianExchange, MarketIndex, MarketOverview, PricePoint, StockDetail, StockHistory } from "./marketDataTypes.js";
 
 const SEARCH_TTL_MS = 5 * 60 * 1_000;
@@ -21,18 +22,20 @@ const PROVIDER_NAME_ALIASES: Readonly<Record<string, string>> = {
   "NSE:TCS": "TCS",
 };
 
-type MarketDataClient = Pick<IndianApiClient, "searchCompanies" | "getStockDetail" | "getHistoricalData" | "getNseMostActive">;
+type MarketDataClient = Pick<IndianApiClient, "searchCompanies" | "getStockDetail" | "getHistoricalData" | "getHistoricalDataByName" | "getNseMostActive">;
 type IndexDataClient = Pick<YahooFinanceClient, "getIndexQuote">;
+type MarketDataLogger = Pick<Logger, "warn">;
 
 const INDEX_DEFINITIONS: ReadonlyArray<{
   symbol: MarketIndex["symbol"];
   providerSymbol: YahooIndexSymbol;
+  fallbackName: string;
   name: string;
 }> = [
-  { symbol: "NIFTY50", providerSymbol: "^NSEI", name: "NIFTY 50" },
-  { symbol: "SENSEX", providerSymbol: "^BSESN", name: "SENSEX" },
-  { symbol: "NIFTYBANK", providerSymbol: "^NSEBANK", name: "NIFTY BANK" },
-  { symbol: "NIFTYIT", providerSymbol: "^CNXIT", name: "NIFTY IT" },
+  { symbol: "NIFTY50", providerSymbol: "^NSEI", fallbackName: "NIFTY", name: "NIFTY 50" },
+  { symbol: "SENSEX", providerSymbol: "^BSESN", fallbackName: "BSE SENSEX", name: "SENSEX" },
+  { symbol: "NIFTYBANK", providerSymbol: "^NSEBANK", fallbackName: "NIFTY BANK", name: "NIFTY BANK" },
+  { symbol: "NIFTYIT", providerSymbol: "^CNXIT", fallbackName: "CNXIT", name: "NIFTY IT" },
 ];
 
 const rangeConfiguration: Record<ChartRange, { period: ProviderHistoryPeriod; take?: number }> = {
@@ -114,6 +117,7 @@ export class MarketDataService {
     private readonly client: MarketDataClient,
     private readonly cache: CacheStore,
     private readonly indexClient: IndexDataClient,
+    private readonly logger?: MarketDataLogger,
   ) {}
 
   public async getMarketOverview(): Promise<CacheResult<MarketOverview>> {
@@ -122,7 +126,7 @@ export class MarketDataService {
       async () => {
         const [activeResult, ...indexResults] = await Promise.allSettled([
           this.client.getNseMostActive(),
-          ...INDEX_DEFINITIONS.map((definition) => this.indexClient.getIndexQuote(definition.providerSymbol)),
+          ...INDEX_DEFINITIONS.map((definition) => this.getIndexQuote(definition)),
         ]);
         const indices = INDEX_DEFINITIONS.map((definition, index): MarketIndex => {
           const result = indexResults[index];
@@ -272,6 +276,40 @@ export class MarketDataService {
     );
   }
 
+  private async getIndexQuote(
+    definition: (typeof INDEX_DEFINITIONS)[number],
+  ): Promise<YahooIndexQuote> {
+    try {
+      return await this.indexClient.getIndexQuote(definition.providerSymbol);
+    } catch (primaryError) {
+      try {
+        const history = await this.cache.getOrFetch(
+          `index-history:${definition.symbol}`,
+          async () => mapHistory(await this.client.getHistoricalDataByName(definition.fallbackName, "1m")),
+          HISTORY_TTL_MS,
+        );
+        const latest = history.value.at(-1);
+        if (!latest) throw new ProviderContractError(`historical index ${definition.name}`);
+
+        this.logger?.warn(
+          { err: primaryError, index: definition.symbol, fallback: "IndianAPI" },
+          "Primary index provider failed; using historical fallback",
+        );
+        return {
+          value: latest.close,
+          previousClose: history.value.at(-2)?.close ?? null,
+          asOf: new Date(`${latest.date}T15:30:00+05:30`).toISOString(),
+        };
+      } catch (fallbackError) {
+        this.logger?.warn(
+          { err: fallbackError, primaryError, index: definition.symbol },
+          "All index providers failed",
+        );
+        throw fallbackError;
+      }
+    }
+  }
+
   private mapDetail(
     instrument: StockSearchResult,
     detail: ProviderStockDetail,
@@ -330,12 +368,15 @@ export class MarketDataService {
   }
 }
 
-export function createMarketDataService(config: MarketDataConfig): MarketDataService {
+export function createMarketDataService(
+  config: MarketDataConfig,
+  logger?: MarketDataLogger,
+): MarketDataService {
   const httpClient = new RetryingJsonHttpClient();
   const client = new IndianApiClient({
     baseUrl: config.baseUrl,
     apiKey: config.apiKey,
     httpClient,
   });
-  return new MarketDataService(client, new InMemoryCache(), new YahooFinanceClient(httpClient));
+  return new MarketDataService(client, new InMemoryCache(), new YahooFinanceClient(httpClient), logger);
 }

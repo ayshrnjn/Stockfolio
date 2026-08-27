@@ -29,20 +29,42 @@ export interface YahooIndexQuote {
 export class YahooFinanceClient {
   public constructor(
     private readonly httpClient: JsonHttpClient,
-    private readonly baseUrl = new URL("https://query1.finance.yahoo.com"),
+    private readonly baseUrls: ReadonlyArray<URL> = [
+      new URL("https://query1.finance.yahoo.com"),
+      new URL("https://query2.finance.yahoo.com"),
+    ],
   ) {}
 
   public async getIndexQuote(symbol: YahooIndexSymbol): Promise<YahooIndexQuote> {
     const normalizedSymbol = indexSymbolSchema.parse(symbol);
-    const url = new URL(`/v8/finance/chart/${encodeURIComponent(normalizedSymbol)}`, this.baseUrl);
+    let lastError: unknown;
+
+    for (const baseUrl of this.baseUrls) {
+      try {
+        return await this.fetchIndexQuote(baseUrl, normalizedSymbol);
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    throw lastError ?? new Error("No Yahoo Finance endpoint is configured");
+  }
+
+  private async fetchIndexQuote(baseUrl: URL, symbol: YahooIndexSymbol): Promise<YahooIndexQuote> {
+    const url = new URL(`/v8/finance/chart/${encodeURIComponent(symbol)}`, baseUrl);
     url.searchParams.set("range", "5d");
     url.searchParams.set("interval", "1d");
     const parsed = responseSchema.safeParse(await this.httpClient.get({
       url,
-      headers: { Accept: "application/json", "User-Agent": "StockFolio/1.0" },
+      headers: {
+        Accept: "application/json",
+        "Accept-Language": "en-US,en;q=0.9",
+        "User-Agent": "Mozilla/5.0 (compatible; StockFolio/1.0; +https://github.com/ayshrnjn/Stockfolio)",
+      },
     }));
     const meta = parsed.success ? parsed.data.chart.result[0]?.meta : undefined;
     if (!meta) throw new Error("Yahoo Finance index response did not match the expected contract");
+
     const timestamp = meta.regularMarketTime;
     return {
       value: meta.regularMarketPrice === null ? null : String(meta.regularMarketPrice),
