@@ -16,7 +16,7 @@ StockFolio lets users search Indian stocks, view market information, record date
 - NSE and BSE stock search with stock details, price history, fundamentals, and descriptions
 - Registration and login
 - Manual BUY and SELL entry with quantity, execution price, and trade date
-- FIFO average cost and realized, unrealized, total, and daily gain/loss
+- average cost and total, and daily gain/loss
 - Absolute and money-weighted annualized returns
 - Responsive portfolio dashboard with loading, empty, stale, and error states
 
@@ -39,7 +39,6 @@ The backend validates important portfolio edge cases:
 - **Rate limiting** on public market-data and search endpoints
 - **Five-minute caching** with stale-data fallback
 - Strict query and third-party response validation
-- Keyboard navigation, Enter selection, Escape handling, and ARIA combobox support
 - Provider alias handling for symbols such as `M&M`
 
 ## API
@@ -58,8 +57,8 @@ The backend validates important portfolio edge cases:
 
 | Area | Technology |
 | --- | --- |
-| Frontend | React, TypeScript, React Router, Vite, Tailwind CSS, Recharts |
-| Backend | Node.js, Express, TypeScript, Zod, `decimal.js` |
+| Frontend | React, TypeScript, React Router, Vite, Tailwind CSS |
+| Backend | Node.js, Express, TypeScript, Zod |
 | Database | PostgreSQL / Neon |
 | Market data | IndianAPI and Yahoo Finance |
 
