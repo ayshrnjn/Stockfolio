@@ -11,6 +11,15 @@ interface LocationState {
   from?: unknown;
 }
 
+function safeLocalPath(value: unknown): string {
+  return typeof value === "string"
+    && value.startsWith("/")
+    && !value.startsWith("//")
+    && !value.includes("\\")
+    ? value
+    : "/portfolio";
+}
+
 function readServerFieldErrors(details: unknown): FieldErrors {
   if (typeof details !== "object" || details === null || Array.isArray(details)) return {};
   const result: FieldErrors = {};
@@ -34,9 +43,7 @@ export function AuthPage(): JSX.Element {
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const state = location.state as LocationState | null;
-  const requestedPath = typeof state?.from === "string" && state.from.startsWith("/")
-    ? state.from
-    : "/portfolio";
+  const requestedPath = safeLocalPath(state?.from);
 
   if (status === "authenticated") return <Navigate replace to={requestedPath} />;
 

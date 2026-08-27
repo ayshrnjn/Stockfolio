@@ -19,6 +19,17 @@ const historyQuerySchema = z.object({
 
 export function createStocksRouter(marketData: MarketDataService): Router {
   const router = Router();
+  const marketReadRateLimit = rateLimit({
+    windowMs: 60_000,
+    limit: 120,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    handler(_request, _response, next) {
+      next(new AppError("RATE_LIMITED", "Too many market-data requests. Please try again shortly.", {
+        status: 429,
+      }));
+    },
+  });
   const searchRateLimit = rateLimit({
     windowMs: 60_000,
     limit: 30,
@@ -30,6 +41,8 @@ export function createStocksRouter(marketData: MarketDataService): Router {
       }));
     },
   });
+
+  router.use(marketReadRateLimit);
 
   router.get("/search", searchRateLimit, asyncHandler(async (request, response) => {
     const { q } = searchSchema.parse(request.query);

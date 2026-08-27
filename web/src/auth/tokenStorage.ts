@@ -1,27 +1,36 @@
 const TOKEN_STORAGE_KEY = "stockfolio.authToken";
+let memoryToken: string | null = null;
 
-function storageAvailable(): boolean {
-  return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
-}
-
-export function getAuthToken(): string | null {
-  if (!storageAvailable()) return null;
+function localStorageOrNull(): Storage | null {
+  if (typeof window === "undefined") return null;
   try {
-    return window.localStorage.getItem(TOKEN_STORAGE_KEY);
+    return window.localStorage;
   } catch {
     return null;
   }
 }
 
+export function getAuthToken(): string | null {
+  try {
+    return localStorageOrNull()?.getItem(TOKEN_STORAGE_KEY) ?? memoryToken;
+  } catch {
+    return memoryToken;
+  }
+}
+
 export function setAuthToken(token: string): void {
-  if (!storageAvailable()) return;
-  window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
+  memoryToken = token;
+  try {
+    localStorageOrNull()?.setItem(TOKEN_STORAGE_KEY, token);
+  } catch {
+    // The in-memory fallback keeps the current tab authenticated.
+  }
 }
 
 export function clearAuthToken(): void {
-  if (!storageAvailable()) return;
+  memoryToken = null;
   try {
-    window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+    localStorageOrNull()?.removeItem(TOKEN_STORAGE_KEY);
   } catch {
     // Storage can be unavailable in privacy-restricted browser contexts.
   }

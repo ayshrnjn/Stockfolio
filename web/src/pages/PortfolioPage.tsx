@@ -30,6 +30,7 @@ export function PortfolioPage(): JSX.Element {
   const notification = typeof (location.state as PortfolioLocationState | null)?.notification === "string"
     ? (location.state as { notification: string }).notification
     : null;
+  const hasPortfolioActivity = Boolean(dashboard?.summary.returnSince);
 
   const loadPortfolio = useCallback(async (signal?: AbortSignal): Promise<void> => {
     setLoading(true);
@@ -60,26 +61,55 @@ export function PortfolioPage(): JSX.Element {
           <h1 className="mt-2 text-3xl font-semibold tracking-tight text-ink">Portfolio overview</h1>
           <p className="mt-2 text-sm text-slate-500">Welcome back, {user?.name}</p>
         </div>
-        <Link to="/" className="inline-flex items-center justify-center rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white hover:bg-brand-700">Add another stock</Link>
+        <Link
+          to="/"
+          className="inline-flex items-center justify-center rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white hover:bg-brand-700"
+        >
+          Add another stock
+        </Link>
       </div>
 
       {notification ? (
         <div className="mt-6 flex items-center justify-between gap-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800" role="status">
           <span>{notification}</span>
-          <button type="button" className="text-lg" aria-label="Dismiss notification" onClick={() => navigate(location.pathname, { replace: true })}>×</button>
+          <button
+            type="button"
+            className="text-lg"
+            aria-label="Dismiss notification"
+            onClick={() => navigate(location.pathname, { replace: true })}
+          >
+            ×
+          </button>
         </div>
       ) : null}
-      {error ? <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{error}</div> : null}
+      {error ? (
+        <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
+          {error}
+        </div>
+      ) : null}
 
       {loading ? <PortfolioSkeleton /> : null}
-      {!loading && dashboard?.holdings.length === 0 ? <EmptyPortfolio /> : null}
-      {!loading && dashboard && dashboard.holdings.length > 0 ? (
+      {!loading && dashboard?.holdings.length === 0 && !hasPortfolioActivity ? (
+        <EmptyPortfolio />
+      ) : null}
+      {!loading && dashboard && hasPortfolioActivity ? (
         <>
-          {dashboard.summary.stale ? <p className="mt-6 rounded-xl bg-amber-50 px-4 py-3 text-xs font-medium text-amber-800">Some market prices are stale or unavailable. Affected rows are labelled below.</p> : null}
-          <div className="mt-6"><SummaryStrip summary={dashboard.summary} /></div>
+          {dashboard.summary.stale ? (
+            <p className="mt-6 rounded-xl bg-amber-50 px-4 py-3 text-xs font-medium text-amber-800">
+              Some market prices are stale or unavailable. Affected rows are labelled below.
+            </p>
+          ) : null}
           <div className="mt-6">
-            <HoldingsTable holdings={dashboard.holdings} onTrade={(holding, type) => setTradeTarget({ holding, type })} />
+            <SummaryStrip summary={dashboard.summary} />
           </div>
+          {dashboard.holdings.length > 0 ? (
+            <div className="mt-6">
+              <HoldingsTable
+                holdings={dashboard.holdings}
+                onTrade={(holding, type) => setTradeTarget({ holding, type })}
+              />
+            </div>
+          ) : <ClosedPortfolio />}
         </>
       ) : null}
 
@@ -97,7 +127,9 @@ export function PortfolioPage(): JSX.Element {
             setTradeTarget(null);
             navigate(location.pathname, {
               replace: true,
-              state: { notification: `${transaction.type === "BUY" ? "Purchase" : "Sale"} recorded for ${transaction.symbol}` },
+              state: {
+                notification: `${transaction.type === "BUY" ? "Purchase" : "Sale"} recorded for ${transaction.symbol}`,
+              },
             });
             await loadPortfolio();
           }}
@@ -110,14 +142,49 @@ export function PortfolioPage(): JSX.Element {
 function EmptyPortfolio(): JSX.Element {
   return (
     <section className="mt-6 rounded-3xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center shadow-panel">
-      <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-brand-50 text-2xl text-brand-700">＋</div>
+      <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-brand-50 text-2xl text-brand-700">
+        ＋
+      </div>
       <h2 className="mt-5 text-xl font-semibold text-ink">Your portfolio is ready</h2>
-      <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-500">Search for a stock and record a BUY transaction to see live holdings and profit or loss.</p>
-      <Link to="/" className="mt-6 inline-flex rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white">Search for a stock</Link>
+      <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-500">
+        Search for a stock and record a BUY transaction to see live holdings and profit or loss.
+      </p>
+      <Link
+        to="/"
+        className="mt-6 inline-flex rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white"
+      >
+        Search for a stock
+      </Link>
+    </section>
+  );
+}
+
+function ClosedPortfolio(): JSX.Element {
+  return (
+    <section className="mt-6 rounded-3xl border border-slate-200 bg-white px-6 py-12 text-center shadow-panel">
+      <h2 className="text-xl font-semibold text-ink">No open holdings</h2>
+      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+        All recorded positions are closed. Your realized performance remains visible above.
+      </p>
+      <Link
+        to="/"
+        className="mt-6 inline-flex rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white"
+      >
+        Search for another stock
+      </Link>
     </section>
   );
 }
 
 function PortfolioSkeleton(): JSX.Element {
-  return <div className="mt-6 space-y-6" aria-label="Loading portfolio"><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">{[0, 1, 2, 3, 4].map((item) => <div key={item} className="h-28 animate-pulse rounded-2xl bg-white" />)}</div><div className="h-80 animate-pulse rounded-3xl bg-white" /></div>;
+  return (
+    <div className="mt-6 space-y-6" aria-label="Loading portfolio">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        {[0, 1, 2, 3, 4].map((item) => (
+          <div key={item} className="h-28 animate-pulse rounded-2xl bg-white" />
+        ))}
+      </div>
+      <div className="h-80 animate-pulse rounded-3xl bg-white" />
+    </div>
+  );
 }

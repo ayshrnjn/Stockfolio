@@ -7,7 +7,7 @@ import {
   useState,
   type PropsWithChildren,
 } from "react";
-import { request } from "../api/client";
+import { AUTH_UNAUTHORIZED_EVENT, request } from "../api/client";
 import { clearAuthToken, getAuthToken, setAuthToken } from "./tokenStorage";
 
 export interface AuthUser {
@@ -49,22 +49,30 @@ export function AuthProvider({ children }: PropsWithChildren): JSX.Element {
   const [user, setUser] = useState<AuthUser | null>(null);
 
   useEffect(() => {
-    if (!getAuthToken()) return;
-
     const controller = new AbortController();
-    request<{ user: AuthUser }>("/api/auth/me", { signal: controller.signal })
-      .then(({ user: currentUser }) => {
-        setUser(currentUser);
-        setStatus("authenticated");
-      })
-      .catch((error: unknown) => {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        clearAuthToken();
-        setUser(null);
-        setStatus("anonymous");
-      });
+    const markAnonymous = (): void => {
+      setUser(null);
+      setStatus("anonymous");
+    };
+    window.addEventListener(AUTH_UNAUTHORIZED_EVENT, markAnonymous);
 
-    return () => controller.abort();
+    if (getAuthToken()) {
+      request<{ user: AuthUser }>("/api/auth/me", { signal: controller.signal })
+        .then(({ user: currentUser }) => {
+          setUser(currentUser);
+          setStatus("authenticated");
+        })
+        .catch((error: unknown) => {
+          if (error instanceof DOMException && error.name === "AbortError") return;
+          clearAuthToken();
+          markAnonymous();
+        });
+    }
+
+    return () => {
+      controller.abort();
+      window.removeEventListener(AUTH_UNAUTHORIZED_EVENT, markAnonymous);
+    };
   }, []);
 
   const authenticate = useCallback(async (

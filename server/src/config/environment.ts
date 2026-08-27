@@ -49,7 +49,7 @@ export class EnvironmentError extends Error {
   }
 }
 
-function parseCorsOrigins(value: string): ReadonlySet<string> {
+function parseCorsOrigins(value: string, nodeEnvironment: NodeEnvironment): ReadonlySet<string> {
   const origins = value.split(",").map((origin) => origin.trim()).filter(Boolean);
   if (origins.length === 0) throw new EnvironmentError("CORS_ORIGIN must contain an origin");
 
@@ -57,6 +57,10 @@ function parseCorsOrigins(value: string): ReadonlySet<string> {
     try {
       const url = new URL(origin);
       if (url.pathname !== "/" || url.search || url.hash) throw new Error("not an origin");
+      if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("unsupported protocol");
+      if (nodeEnvironment === "production" && url.protocol !== "https:") {
+        throw new Error("production origins must use HTTPS");
+      }
       return url.origin;
     } catch {
       throw new EnvironmentError(`CORS_ORIGIN contains an invalid origin: ${origin}`);
@@ -78,7 +82,7 @@ export function readEnvironment(environment: NodeJS.ProcessEnv = process.env): E
     nodeEnvironment: parsed.data.NODE_ENV,
     port: parsed.data.PORT,
     logLevel: parsed.data.LOG_LEVEL,
-    corsOrigins: parseCorsOrigins(parsed.data.CORS_ORIGIN),
+    corsOrigins: parseCorsOrigins(parsed.data.CORS_ORIGIN, parsed.data.NODE_ENV),
     trustProxy: parsed.data.TRUST_PROXY,
     auth: {
       jwtSecret: parsed.data.JWT_SECRET,

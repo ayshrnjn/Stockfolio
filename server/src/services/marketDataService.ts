@@ -21,10 +21,14 @@ const PROVIDER_NAME_ALIASES: Readonly<Record<string, string>> = {
   "NSE:M&M": "Mahindra & Mahindra",
   "NSE:TCS": "TCS",
 };
+const SEARCH_QUERY_ALIASES: Readonly<Record<string, string>> = {
+  "m&m": "Mahindra & Mahindra",
+};
 
 type MarketDataClient = Pick<IndianApiClient, "searchCompanies" | "getStockDetail" | "getHistoricalData" | "getHistoricalDataByName" | "getNseMostActive">;
 type IndexDataClient = Pick<YahooFinanceClient, "getIndexQuote">;
 type MarketDataLogger = Pick<Logger, "warn">;
+type IndexQuote = YahooIndexQuote & { status: "live" | "delayed" };
 
 const INDEX_DEFINITIONS: ReadonlyArray<{
   symbol: MarketIndex["symbol"];
@@ -141,7 +145,7 @@ export class MarketDataService {
             change: calculateChange(value, previousClose),
             changePct: calculateChangePercent(value, previousClose),
             asOf,
-            status: value ? "live" : "unavailable",
+            status: value ? result.value.status : "unavailable",
           };
         });
         const activeRows = activeResult.status === "fulfilled" ? activeResult.value.slice(0, 10) : [];
@@ -179,9 +183,11 @@ export class MarketDataService {
 
   public async searchStocks(query: string): Promise<CacheResult<StockSearchResult[]>> {
     const normalizedQuery = query.trim();
+    const cacheKey = normalizedQuery.toLocaleLowerCase("en-IN");
+    const providerQuery = SEARCH_QUERY_ALIASES[cacheKey] ?? normalizedQuery;
     return this.withProviderErrors(() => this.cache.getOrFetch(
-      `search:${normalizedQuery.toLocaleLowerCase("en-IN")}`,
-      async () => (await this.client.searchCompanies(normalizedQuery)).results.slice(0, 10),
+      `search:${cacheKey}`,
+      async () => (await this.client.searchCompanies(providerQuery)).results.slice(0, 10),
       SEARCH_TTL_MS,
     ));
   }
@@ -278,9 +284,12 @@ export class MarketDataService {
 
   private async getIndexQuote(
     definition: (typeof INDEX_DEFINITIONS)[number],
-  ): Promise<YahooIndexQuote> {
+  ): Promise<IndexQuote> {
     try {
-      return await this.indexClient.getIndexQuote(definition.providerSymbol);
+      return {
+        ...await this.indexClient.getIndexQuote(definition.providerSymbol),
+        status: "live",
+      };
     } catch (primaryError) {
       try {
         const history = await this.cache.getOrFetch(
@@ -299,6 +308,7 @@ export class MarketDataService {
           value: latest.close,
           previousClose: history.value.at(-2)?.close ?? null,
           asOf: new Date(`${latest.date}T15:30:00+05:30`).toISOString(),
+          status: "delayed",
         };
       } catch (fallbackError) {
         this.logger?.warn(

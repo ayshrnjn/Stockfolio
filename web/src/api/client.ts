@@ -1,4 +1,6 @@
-import { getAuthToken } from "../auth/tokenStorage";
+import { clearAuthToken, getAuthToken } from "../auth/tokenStorage";
+
+export const AUTH_UNAUTHORIZED_EVENT = "stockfolio:unauthorized";
 
 type ErrorPayload = {
   code?: unknown;
@@ -55,6 +57,10 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
   const payload = await readJson(response);
 
   if (!response.ok) {
+    if (response.status === 401 && token) {
+      clearAuthToken();
+      window.dispatchEvent(new Event(AUTH_UNAUTHORIZED_EVENT));
+    }
     const errorPayload = isRecord(payload) && isRecord(payload.error)
       ? payload.error as ErrorPayload
       : {};

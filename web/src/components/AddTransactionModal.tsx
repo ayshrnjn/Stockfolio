@@ -43,7 +43,12 @@ function isPositiveDecimal(value: string): boolean {
   return /^\d{1,14}(?:\.\d{1,4})?$/.test(value) && /[1-9]/.test(value);
 }
 
-export function AddTransactionModal({ stock, initialType = "BUY", onClose, onSuccess }: AddTransactionModalProps): JSX.Element {
+export function AddTransactionModal({
+  stock,
+  initialType = "BUY",
+  onClose,
+  onSuccess,
+}: AddTransactionModalProps): JSX.Element {
   const navigate = useNavigate();
   const [type, setType] = useState<"BUY" | "SELL">(initialType);
   const [quantity, setQuantity] = useState("");
@@ -52,15 +57,48 @@ export function AddTransactionModal({ stock, initialType = "BUY", onClose, onSuc
   const [errors, setErrors] = useState<Partial<Record<FieldName, string>>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const dialogRef = useRef<HTMLElement>(null);
   const suggestedPrice = useRef(stock.quote.ltp);
   const idempotencyKey = useRef<string | null>(null);
 
   useEffect(() => {
-    const closeOnEscape = (event: KeyboardEvent): void => {
-      if (event.key === "Escape" && !submitting) onClose();
+    const previouslyFocused = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      previouslyFocused?.focus();
     };
-    document.addEventListener("keydown", closeOnEscape);
-    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, []);
+
+  useEffect(() => {
+    const handleDialogKeys = (event: KeyboardEvent): void => {
+      if (event.key === "Escape" && !submitting) {
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+      );
+      if (!focusable || focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!first || !last) return;
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", handleDialogKeys);
+    return () => document.removeEventListener("keydown", handleDialogKeys);
   }, [onClose, submitting]);
 
   useEffect(() => {
@@ -101,18 +139,21 @@ export function AddTransactionModal({ stock, initialType = "BUY", onClose, onSuc
     setErrors({});
     idempotencyKey.current ??= crypto.randomUUID();
     try {
-      const response = await request<{ transaction: PortfolioTransaction }>("/api/portfolio/transactions", {
-        method: "POST",
-        headers: { "Idempotency-Key": idempotencyKey.current },
-        body: JSON.stringify({
-          symbol: stock.symbol,
-          exchange: stock.exchange,
-          type,
-          quantity,
-          price,
-          txnDate,
-        }),
-      });
+      const response = await request<{ transaction: PortfolioTransaction }>(
+        "/api/portfolio/transactions",
+        {
+          method: "POST",
+          headers: { "Idempotency-Key": idempotencyKey.current },
+          body: JSON.stringify({
+            symbol: stock.symbol,
+            exchange: stock.exchange,
+            type,
+            quantity,
+            price,
+            txnDate,
+          }),
+        },
+      );
       if (onSuccess) {
         await onSuccess(response.transaction);
         return;
@@ -133,29 +174,82 @@ export function AddTransactionModal({ stock, initialType = "BUY", onClose, onSuc
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-end bg-slate-950/45 p-0 backdrop-blur-sm sm:place-items-center sm:p-6" role="presentation" onMouseDown={(event) => {
-      if (event.target === event.currentTarget && !submitting) onClose();
-    }}>
-      <section className="w-full rounded-t-3xl bg-white p-6 shadow-2xl sm:max-w-lg sm:rounded-3xl sm:p-8" role="dialog" aria-modal="true" aria-labelledby="transaction-title">
+    <div
+      className="fixed inset-0 z-50 grid place-items-end bg-slate-950/45 p-0 backdrop-blur-sm sm:place-items-center sm:p-6"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !submitting) onClose();
+      }}
+    >
+      <section
+        ref={dialogRef}
+        className="w-full rounded-t-3xl bg-white p-6 shadow-2xl sm:max-w-lg sm:rounded-3xl sm:p-8"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="transaction-title"
+        aria-busy={submitting}
+      >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-700">{stock.exchange} · {stock.symbol}</p>
-            <h2 id="transaction-title" className="mt-2 text-2xl font-semibold text-ink">Add transaction</h2>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-700">
+              {stock.exchange} · {stock.symbol}
+            </p>
+            <h2 id="transaction-title" className="mt-2 text-2xl font-semibold text-ink">
+              Add transaction
+            </h2>
             <p className="mt-1 text-sm text-slate-500">{stock.companyName}</p>
           </div>
-          <button type="button" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-xl bg-slate-100 text-xl text-slate-500 hover:bg-slate-200" aria-label="Close transaction form">×</button>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            className="grid h-10 w-10 place-items-center rounded-xl bg-slate-100 text-xl text-slate-500 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label="Close transaction form"
+          >
+            ×
+          </button>
         </div>
 
         <form className="mt-7" onSubmit={(event) => void submit(event)} noValidate>
-          <div className="grid grid-cols-2 rounded-xl bg-slate-100 p-1" role="group" aria-label="Transaction type">
+          <div
+            className="grid grid-cols-2 rounded-xl bg-slate-100 p-1"
+            role="group"
+            aria-label="Transaction type"
+          >
             {(["BUY", "SELL"] as const).map((candidate) => (
-              <button key={candidate} type="button" aria-pressed={type === candidate} onClick={() => { setType(candidate); idempotencyKey.current = null; }} className={`rounded-lg py-2.5 text-sm font-bold transition ${type === candidate ? candidate === "BUY" ? "bg-white text-profit shadow-sm" : "bg-white text-loss shadow-sm" : "text-slate-500"}`}>
+              <button
+                key={candidate}
+                type="button"
+                disabled={submitting}
+                aria-pressed={type === candidate}
+                onClick={() => {
+                  setType(candidate);
+                  idempotencyKey.current = null;
+                }}
+                className={`rounded-lg py-2.5 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                  type === candidate
+                    ? candidate === "BUY"
+                      ? "bg-white text-profit shadow-sm"
+                      : "bg-white text-loss shadow-sm"
+                    : "text-slate-500"
+                }`}
+              >
                 {candidate}
               </button>
             ))}
           </div>
           <div className="mt-6 grid gap-5 sm:grid-cols-2">
-            <TransactionField autoFocus label="Quantity" name="quantity" type="number" value={quantity} error={errors.quantity} onChange={(value) => changeField("quantity", value)} inputMode="decimal" />
+            <TransactionField
+              autoFocus
+              disabled={submitting}
+              label="Quantity"
+              name="quantity"
+              type="number"
+              value={quantity}
+              error={errors.quantity}
+              onChange={(value) => changeField("quantity", value)}
+              inputMode="decimal"
+            />
             <TransactionField
               label="Executed price per share (₹)"
               name="price"
@@ -169,15 +263,40 @@ export function AddTransactionModal({ stock, initialType = "BUY", onClose, onSuc
                 : "Enter the actual price from your broker contract note."}
               onChange={(value) => changeField("price", value)}
               inputMode="decimal"
+              disabled={submitting}
             />
           </div>
           <div className="mt-5">
-            <TransactionField label="Transaction date" name="txnDate" type="date" value={txnDate} max={todayInIndia()} error={errors.txnDate} onChange={(value) => changeField("txnDate", value)} />
+            <TransactionField
+              disabled={submitting}
+              label="Transaction date"
+              name="txnDate"
+              type="date"
+              value={txnDate}
+              max={todayInIndia()}
+              error={errors.txnDate}
+              onChange={(value) => changeField("txnDate", value)}
+            />
           </div>
-          {formError ? <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{formError}</div> : null}
+          {formError ? (
+            <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
+              {formError}
+            </div>
+          ) : null}
           <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-            <button type="button" onClick={onClose} className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancel</button>
-            <button type="submit" disabled={submitting} className="rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={submitting}
+              className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
               {submitting ? "Saving…" : `Record ${type.toLowerCase()}`}
             </button>
           </div>
@@ -189,6 +308,7 @@ export function AddTransactionModal({ stock, initialType = "BUY", onClose, onSuc
 
 interface TransactionFieldProps {
   autoFocus?: boolean;
+  disabled?: boolean;
   label: string;
   name: string;
   type: "number" | "date";
@@ -200,11 +320,42 @@ interface TransactionFieldProps {
   onChange(value: string): void;
 }
 
-function TransactionField({ autoFocus = false, label, name, type, value, error, hint, inputMode, max, onChange }: TransactionFieldProps): JSX.Element {
+function TransactionField({
+  autoFocus = false,
+  disabled = false,
+  label,
+  name,
+  type,
+  value,
+  error,
+  hint,
+  inputMode,
+  max,
+  onChange,
+}: TransactionFieldProps): JSX.Element {
   return (
     <div>
-      <label htmlFor={name} className="mb-2 block text-sm font-medium text-slate-700">{label}</label>
-      <input autoFocus={autoFocus} id={name} name={name} type={type} value={value} inputMode={inputMode} max={max} min={type === "number" ? "0.0001" : undefined} step={type === "number" ? "0.0001" : undefined} onChange={(event) => onChange(event.target.value)} aria-invalid={Boolean(error)} aria-describedby={error || hint ? `${name}-message` : undefined} className={`w-full rounded-xl border bg-white px-4 py-3 text-sm text-ink shadow-sm ${error ? "border-red-300" : "border-slate-300 focus:border-brand-500"}`} />
+      <label htmlFor={name} className="mb-2 block text-sm font-medium text-slate-700">
+        {label}
+      </label>
+      <input
+        autoFocus={autoFocus}
+        disabled={disabled}
+        id={name}
+        name={name}
+        type={type}
+        value={value}
+        inputMode={inputMode}
+        max={max}
+        min={type === "number" ? "0.0001" : undefined}
+        step={type === "number" ? "0.0001" : undefined}
+        onChange={(event) => onChange(event.target.value)}
+        aria-invalid={Boolean(error)}
+        aria-describedby={error || hint ? `${name}-message` : undefined}
+        className={`w-full rounded-xl border bg-white px-4 py-3 text-sm text-ink shadow-sm disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-70 ${
+          error ? "border-red-300" : "border-slate-300 focus:border-brand-500"
+        }`}
+      />
       {error ? <p id={`${name}-message`} className="mt-2 text-xs text-red-600">{error}</p> : null}
       {!error && hint ? <p id={`${name}-message`} className="mt-2 text-xs text-slate-500">{hint}</p> : null}
     </div>

@@ -48,17 +48,12 @@ const router = createBrowserRouter(
       ],
     },
   ],
-  {
-    future: {
-      v7_relativeSplatPath: true,
-    },
-  },
 );
 
 export function App(): JSX.Element {
   return (
     <AuthProvider>
-      <RouterProvider router={router} future={{ v7_startTransition: true }} />
+      <RouterProvider router={router} />
     </AuthProvider>
   );
 }

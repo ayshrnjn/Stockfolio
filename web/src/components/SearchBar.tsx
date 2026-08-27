@@ -100,9 +100,9 @@ export function SearchBar(): JSX.Element {
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
       setActiveIndex((current) => (current <= 0 ? results.length - 1 : current - 1));
-    } else if (event.key === "Enter" && activeIndex >= 0) {
+    } else if (event.key === "Enter") {
       event.preventDefault();
-      const selected = results[activeIndex];
+      const selected = results[activeIndex >= 0 ? activeIndex : 0];
       if (selected) selectStock(selected);
     }
   };

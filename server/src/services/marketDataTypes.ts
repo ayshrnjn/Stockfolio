@@ -56,7 +56,7 @@ export interface MarketIndex {
   change: string | null;
   changePct: string | null;
   asOf: string | null;
-  status: "live" | "unavailable";
+  status: "live" | "delayed" | "unavailable";
 }
 
 export interface ActiveCompany {
