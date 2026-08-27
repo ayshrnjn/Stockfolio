@@ -8,7 +8,7 @@
 
 </div>
 
-StockFolio lets users search Indian stocks, view market information, record dated BUY and SELL transactions, and monitor portfolio performance using FIFO profit/loss, absolute return, and annualized return.
+StockFolio lets users search Indian stocks, view market information, record dated BUY and SELL transactions, and monitor portfolio performance using Fprofit/loss, absolute return, and annualized return.
 
 ## Features
 
@@ -28,7 +28,7 @@ The backend validates important portfolio edge cases:
 - A SELL cannot exceed the quantity available on its selected date.
 - A backdated SELL cannot make any later portfolio balance negative.
 - Future transaction dates and zero or negative quantities and prices are rejected.
-- Past trades require the user’s actual execution price; today’s price is never stored for them automatically.
+- Past trades require the user’s actual execution price;
 - Duplicate submissions are prevented with idempotency keys.
 - Portfolio calculations use FIFO lots and decimal arithmetic.
 
@@ -100,15 +100,3 @@ Copy `server/.env.example` to `server/.env` and provide `DATABASE_URL`, `JWT_SEC
 pnpm db:init
 pnpm dev
 ```
-
-- Frontend: `http://localhost:5173`
-- Backend: `http://localhost:8080`
-
-## Verification
-
-```bash
-pnpm verify
-pnpm audit --prod
-```
-
-The verification command runs strict TypeScript checks, 43 backend tests, and production builds for both applications.
